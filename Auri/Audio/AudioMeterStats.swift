@@ -7,6 +7,9 @@ struct RecognitionPipelineStats: Equatable {
     var skippedWindows: UInt64 = 0
     var belowThresholdCount: UInt64 = 0
     var lastCompletedAt: Date?
+    var rollingAverageTopConfidence: Double?
+    var suggestedConfidenceThreshold: Double?
+    var lastAutoGainDB: Float?
 
     var secondsSinceLastCompletion: Double? {
         guard let lastCompletedAt else { return nil }
@@ -14,13 +17,13 @@ struct RecognitionPipelineStats: Equatable {
     }
 
     var isBehindRealtime: Bool {
-        if isInFlight, let lastCompletedAt, Date().timeIntervalSince(lastCompletedAt) > 3.5 {
+        if isInFlight, let lastCompletedAt, Date().timeIntervalSince(lastCompletedAt) > 2.0 {
             return true
         }
-        if let ms = lastInferenceMs, ms > 3_000 {
+        if let ms = lastInferenceMs, ms > 1_500 {
             return true
         }
-        if let lag = secondsSinceLastCompletion, lag > 4.0 {
+        if let lag = secondsSinceLastCompletion, lag > 2.5 {
             return true
         }
         return false

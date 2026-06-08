@@ -205,6 +205,11 @@ struct MonitorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 sensitivityControl
+                ConfidenceThresholdControls(
+                    settings: settings,
+                    stats: viewModel.recognitionStats,
+                    onApplySuggested: viewModel.applySuggestedConfidenceThreshold
+                )
                 AudioStatsView(stats: viewModel.meterStats)
                 InferenceStatsView(stats: viewModel.recognitionStats, isListening: viewModel.isListening)
                 SpectrogramView(snapshot: audioHandler.spectrogram)

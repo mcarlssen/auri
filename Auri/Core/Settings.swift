@@ -115,6 +115,10 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    @Published var autoGainEnabled: Bool {
+        didSet { save() }
+    }
+
     @Published var cooldownSeconds: Double {
         didSet { save() }
     }
@@ -240,7 +244,8 @@ final class AppSettings: ObservableObject {
     private let defaults = UserDefaults.standard
 
     private init() {
-        confidenceThreshold = defaults.object(forKey: "confidenceThreshold") as? Double ?? 0.6
+        confidenceThreshold = defaults.object(forKey: "confidenceThreshold") as? Double ?? 0.35
+        autoGainEnabled = defaults.object(forKey: "autoGainEnabled") as? Bool ?? true
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
         perSpeciesCooldownSeconds = defaults.object(forKey: "perSpeciesCooldownSeconds") as? Double ?? 3600
         locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
@@ -310,6 +315,7 @@ final class AppSettings: ObservableObject {
 
     private func save() {
         defaults.set(confidenceThreshold, forKey: "confidenceThreshold")
+        defaults.set(autoGainEnabled, forKey: "autoGainEnabled")
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
         defaults.set(perSpeciesCooldownSeconds, forKey: "perSpeciesCooldownSeconds")
         defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")

@@ -87,6 +87,7 @@ final class BirdDetectionViewModel: ObservableObject {
     private var speciesCooldown = SpeciesCooldown()
     private var fileAnalysisCooldown = TimelineSpeciesCooldown()
     private var rateLimiter = NotificationRateLimiter()
+    private var confidenceEstimator = ConfidenceRollingEstimator()
     private let recognitionQueue = RecognitionSerialQueue()
     private var runtimeTask: Task<Void, Never>?
     private var fileAnalysisTask: Task<Void, Never>?
@@ -198,10 +199,17 @@ final class BirdDetectionViewModel: ObservableObject {
         return false
     }
 
+    func applySuggestedConfidenceThreshold() {
+        guard let suggested = recognitionStats.suggestedConfidenceThreshold else { return }
+        let stepped = (suggested * 20).rounded() / 20
+        settings.confidenceThreshold = stepped
+    }
+
     func startListening() {
         settings.recordingEnabled = true
         Task {
             await recognitionQueue.resetMetrics()
+            confidenceEstimator.reset()
             recognitionStats = RecognitionPipelineStats()
             await audioHandler.requestPermission()
             await startAudioIfPossible()
@@ -409,8 +417,19 @@ final class BirdDetectionViewModel: ObservableObject {
         }
 
         do {
-            let result = try await recognizer.recognize(pcmData: data, sampleRate: sampleRate)
+            let result = try await recognizer.recognize(
+                pcmData: data,
+                sampleRate: sampleRate,
+                applyAutoGain: settings.autoGainEnabled
+            )
             recognitionStats.lastInferenceMs = result.inferenceMs
+            recognitionStats.lastAutoGainDB = result.autoGainDB > 0.1 ? result.autoGainDB : nil
+
+            let topConfidence = result.detections.map(\.confidence).max() ?? 0
+            confidenceEstimator.record(confidence: topConfidence)
+            recognitionStats.rollingAverageTopConfidence = confidenceEstimator.rollingAverageTopConfidence
+            recognitionStats.suggestedConfidenceThreshold = confidenceEstimator.suggestedThreshold
+
             if result.detections.isEmpty {
                 RecognitionLogger.log("recognize (no match) \(result.inferenceMs)ms")
             } else {
@@ -421,6 +440,10 @@ final class BirdDetectionViewModel: ObservableObject {
                         (source == .file ? " file=\(sourceFileName ?? "") offset=\(audioOffsetSeconds ?? 0)s" : "")
                     )
                 }
+            }
+
+            if result.detections.isEmpty || topConfidence < settings.confidenceThreshold {
+                recognitionStats.belowThresholdCount += 1
             }
 
             var recordedAny = false
@@ -458,9 +481,6 @@ final class BirdDetectionViewModel: ObservableObject {
             speciesNames: settings.ignoredSpeciesNames
         )
         guard response.confidence >= settings.confidenceThreshold else {
-            var stats = recognitionStats
-            stats.belowThresholdCount += 1
-            recognitionStats = stats
             return false
         }
         if ignoreList.isSpeciesIgnored(birdId: response.id, birdName: response.bird) {

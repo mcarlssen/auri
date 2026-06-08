@@ -48,7 +48,9 @@ final class AudioHandler: ObservableObject {
     private var targetFormat: AVAudioFormat?
     private var bufferAccumulator = Data()
     private static let birdNetWindowSampleCount = BirdNetCoreMLRecognizer.windowSamples
+    private static let birdNetHopSampleCount = birdNetWindowSampleCount / 2
     private static let birdNetWindowByteCount = birdNetWindowSampleCount * MemoryLayout<Float>.size
+    private static let birdNetHopByteCount = birdNetHopSampleCount * MemoryLayout<Float>.size
     private var bufferCount: UInt64 = 0
     private var lastBufferReceivedAt = Date.distantPast
     private var lastSpectrogramPublish = Date.distantPast
@@ -353,8 +355,8 @@ final class AudioHandler: ObservableObject {
 
         while bufferAccumulator.count >= Self.birdNetWindowByteCount {
             let window = bufferAccumulator.prefix(Self.birdNetWindowByteCount)
-            bufferAccumulator.removeFirst(Self.birdNetWindowByteCount)
             onWindowReady?(Data(window), BirdNetCoreMLRecognizer.modelSampleRate)
+            bufferAccumulator.removeFirst(Self.birdNetHopByteCount)
         }
     }
 

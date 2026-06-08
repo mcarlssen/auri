@@ -20,6 +20,7 @@ actor BirdNetCoreMLRecognizer {
     struct RecognitionCallResult: Sendable {
         let detections: [RecognitionResponse]
         let inferenceMs: Int
+        let autoGainDB: Float
 
         var detection: RecognitionResponse? { detections.first }
     }
@@ -113,7 +114,7 @@ actor BirdNetCoreMLRecognizer {
         speciesCatalogEntries
     }
 
-    func recognize(pcmData: Data, sampleRate: Int) async throws -> RecognitionCallResult {
+    func recognize(pcmData: Data, sampleRate: Int, applyAutoGain: Bool = true) async throws -> RecognitionCallResult {
         guard state == .ready else {
             throw RecognizerError.notReady
         }
@@ -121,7 +122,7 @@ actor BirdNetCoreMLRecognizer {
             throw RecognizerError.notReady
         }
         guard !pcmData.isEmpty else {
-            return RecognitionCallResult(detections: [], inferenceMs: 0)
+            return RecognitionCallResult(detections: [], inferenceMs: 0, autoGainDB: 0)
         }
         guard pcmData.count % MemoryLayout<Float>.size == 0 else {
             throw RecognizerError.invalidPCM
@@ -137,6 +138,10 @@ actor BirdNetCoreMLRecognizer {
             samples = Self.resample(samples, from: sampleRate, to: Self.modelSampleRate)
         }
         samples = Self.fitWindow(samples)
+        let appliedAutoGainDB = AudioWindowNormalizer.applyAutoGain(to: &samples, enabled: applyAutoGain)
+        if applyAutoGain, appliedAutoGainDB > 0.1 {
+            RecognizerLog(String(format: "auto-gain +%.1f dB", appliedAutoGainDB))
+        }
 
         RecognizerLog("recognize samples=\(samples.count) sr=\(sampleRate)")
         let started = CFAbsoluteTimeGetCurrent()
@@ -148,7 +153,7 @@ actor BirdNetCoreMLRecognizer {
         guard let outputName = output.featureNames.first,
               let value = output.featureValue(for: outputName),
               let scores = value.multiArrayValue else {
-            return RecognitionCallResult(detections: [], inferenceMs: inferenceMs)
+            return RecognitionCallResult(detections: [], inferenceMs: inferenceMs, autoGainDB: appliedAutoGainDB)
         }
 
         let predictions = Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
@@ -163,7 +168,7 @@ actor BirdNetCoreMLRecognizer {
                 scientificName: label.scientificName
             )
         }
-        return RecognitionCallResult(detections: detections, inferenceMs: inferenceMs)
+        return RecognitionCallResult(detections: detections, inferenceMs: inferenceMs, autoGainDB: appliedAutoGainDB)
     }
 
     private enum RecognizerError: Error, LocalizedError {

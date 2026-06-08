@@ -94,10 +94,15 @@ struct SettingsView: View {
                 }
 
                 Section("Detection") {
-                    Slider(value: $settings.confidenceThreshold, in: 0...1, step: 0.05) {
-                        Text("Confidence threshold")
-                    }
-                    Text(String(format: "%.0f%%", settings.confidenceThreshold * 100))
+                    ConfidenceThresholdControls(
+                        settings: settings,
+                        stats: viewModel.recognitionStats,
+                        onApplySuggested: viewModel.applySuggestedConfidenceThreshold
+                    )
+
+                    Toggle("Auto-gain before inference", isOn: $settings.autoGainEnabled)
+
+                    Text("Live analysis uses 50% overlapping 3-second windows. Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try 25–40% threshold or use the suggested value after a minute of listening.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
