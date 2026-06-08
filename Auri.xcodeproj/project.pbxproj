@@ -1,0 +1,411 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AuriApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AuriApp.swift */; };
+		A10000000000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppDelegate.swift */; };
+		A10000000000000000000003 /* AudioHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AudioHandler.swift */; };
+		A10000000000000000000004 /* Bird.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* Bird.swift */; };
+		A10000000000000000000005 /* BirdDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* BirdDetection.swift */; };
+		A10000000000000000000006 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Settings.swift */; };
+		A10000000000000000000007 /* Cooldown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* Cooldown.swift */; };
+		A10000000000000000000008 /* IgnoreList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* IgnoreList.swift */; };
+		A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* BirdDetectionViewModel.swift */; };
+		A10000000000000000000012 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* MenuBarView.swift */; };
+		A10000000000000000000013 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* SettingsView.swift */; };
+		A10000000000000000000014 /* DetectionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* DetectionCardView.swift */; };
+		A10000000000000000000015 /* EBirdFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* EBirdFormView.swift */; };
+		A10000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* Assets.xcassets */; };
+		A10000000000000000000017 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* LaunchAtLoginManager.swift */; };
+		A10000000000000000000018 /* IgnoreListSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* IgnoreListSettingsView.swift */; };
+		A10000000000000000000019 /* EBirdSubmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* EBirdSubmission.swift */; };
+		A10000000000000000000024 /* MainAppViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* MainAppViews.swift */; };
+		A10000000000000000000025 /* AudioMeterStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* AudioMeterStats.swift */; };
+		A10000000000000000000027 /* SpectrogramEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* SpectrogramEngine.swift */; };
+		A10000000000000000000028 /* SpectrogramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* SpectrogramView.swift */; };
+		A10000000000000000000029 /* BirdNetCoreMLRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */; };
+		A10000000000000000000030 /* audio-model-fp16.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000032 /* audio-model-fp16.mlpackage */; };
+		A10000000000000000000031 /* en_us.txt in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000033 /* en_us.txt */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AuriApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuriApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* AudioHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioHandler.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* Bird.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bird.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* BirdDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDetection.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* Cooldown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cooldown.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* IgnoreList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoreList.swift; sourceTree = "<group>"; };
+		A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdNetCoreMLRecognizer.swift; sourceTree = "<group>"; };
+		A20000000000000000000032 /* audio-model-fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "audio-model-fp16.mlpackage"; sourceTree = "<group>"; };
+		A20000000000000000000033 /* en_us.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = en_us.txt; sourceTree = "<group>"; };
+		A20000000000000000000011 /* BirdDetectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdDetectionViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* DetectionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionCardView.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* EBirdFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EBirdFormView.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000018 /* Auri.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Auri.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000019 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000020 /* IgnoreListSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoreListSettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* EBirdSubmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EBirdSubmission.swift; sourceTree = "<group>"; };
+		A20000000000000000000026 /* MainAppViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainAppViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000027 /* AudioMeterStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMeterStats.swift; sourceTree = "<group>"; };
+		A20000000000000000000029 /* SpectrogramEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000030 /* SpectrogramView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramView.swift; sourceTree = "<group>"; };
+		A30000000000000000000001 /* Auri.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Auri.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000002 /* Auri */,
+				A50000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* Auri */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000004 /* App */,
+				A50000000000000000000005 /* Audio */,
+				A50000000000000000000006 /* Core */,
+				A50000000000000000000007 /* Models */,
+				A50000000000000000000008 /* Server */,
+				A50000000000000000000009 /* UI */,
+				A50000000000000000000010 /* Resources */,
+			);
+			path = Auri;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* Auri.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AuriApp.swift */,
+				A20000000000000000000002 /* AppDelegate.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000005 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* AudioHandler.swift */,
+				A20000000000000000000027 /* AudioMeterStats.swift */,
+				A20000000000000000000029 /* SpectrogramEngine.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000006 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000006 /* Settings.swift */,
+				A20000000000000000000007 /* Cooldown.swift */,
+				A20000000000000000000008 /* IgnoreList.swift */,
+				A20000000000000000000019 /* LaunchAtLoginManager.swift */,
+				A20000000000000000000021 /* EBirdSubmission.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000007 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000004 /* Bird.swift */,
+				A20000000000000000000005 /* BirdDetection.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000008 /* Server */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */,
+			);
+			path = Server;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000009 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000012 /* MenuBarView.swift */,
+				A20000000000000000000013 /* SettingsView.swift */,
+				A20000000000000000000014 /* DetectionCardView.swift */,
+				A20000000000000000000015 /* EBirdFormView.swift */,
+				A20000000000000000000020 /* IgnoreListSettingsView.swift */,
+				A20000000000000000000026 /* MainAppViews.swift */,
+				A20000000000000000000030 /* SpectrogramView.swift */,
+				A50000000000000000000011 /* ViewModel */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000010 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000016 /* Assets.xcassets */,
+				A50000000000000000000012 /* BirdNet */,
+				A20000000000000000000017 /* Info.plist */,
+				A20000000000000000000018 /* Auri.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000012 /* BirdNet */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000032 /* audio-model-fp16.mlpackage */,
+				A50000000000000000000013 /* labels */,
+			);
+			path = BirdNet;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000013 /* labels */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000033 /* en_us.txt */,
+			);
+			path = labels;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000011 /* ViewModel */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000011 /* BirdDetectionViewModel.swift */,
+			);
+			path = ViewModel;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000000000000000000001 /* Auri */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000003 /* Build configuration list for PBXNativeTarget "Auri" */;
+			buildPhases = (
+				A60000000000000000000002 /* Sources */,
+				A40000000000000000000001 /* Frameworks */,
+				A60000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Auri;
+			productName = Auri;
+			productReference = A30000000000000000000001 /* Auri.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A60000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "Auri" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000000000000000000001 /* Auri */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000016 /* Assets.xcassets in Resources */,
+				A10000000000000000000030 /* audio-model-fp16.mlpackage in Resources */,
+				A10000000000000000000031 /* en_us.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AuriApp.swift in Sources */,
+				A10000000000000000000002 /* AppDelegate.swift in Sources */,
+				A10000000000000000000003 /* AudioHandler.swift in Sources */,
+				A10000000000000000000004 /* Bird.swift in Sources */,
+				A10000000000000000000005 /* BirdDetection.swift in Sources */,
+				A10000000000000000000006 /* Settings.swift in Sources */,
+				A10000000000000000000007 /* Cooldown.swift in Sources */,
+				A10000000000000000000008 /* IgnoreList.swift in Sources */,
+				A10000000000000000000029 /* BirdNetCoreMLRecognizer.swift in Sources */,
+				A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */,
+				A10000000000000000000012 /* MenuBarView.swift in Sources */,
+				A10000000000000000000013 /* SettingsView.swift in Sources */,
+				A10000000000000000000014 /* DetectionCardView.swift in Sources */,
+				A10000000000000000000015 /* EBirdFormView.swift in Sources */,
+				A10000000000000000000017 /* LaunchAtLoginManager.swift in Sources */,
+				A10000000000000000000018 /* IgnoreListSettingsView.swift in Sources */,
+				A10000000000000000000019 /* EBirdSubmission.swift in Sources */,
+				A10000000000000000000024 /* MainAppViews.swift in Sources */,
+				A10000000000000000000025 /* AudioMeterStats.swift in Sources */,
+				A10000000000000000000027 /* SpectrogramEngine.swift in Sources */,
+				A10000000000000000000028 /* SpectrogramView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AB0000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AB0000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		AB0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Auri/Resources/Auri.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Auri/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.x38.auri;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AB0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Auri/Resources/Auri.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Auri/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.x38.auri;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "Auri" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB0000000000000000000001 /* Debug */,
+				AB0000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000003 /* Build configuration list for PBXNativeTarget "Auri" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB0000000000000000000003 /* Debug */,
+				AB0000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}

@@ -1,0 +1,3 @@
+bottle>=0.13.4
+numpy>=1.22.0
+birdnet>=0.2.16
