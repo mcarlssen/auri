@@ -47,6 +47,13 @@ private actor RecognitionSerialQueue {
 
 @MainActor
 final class BirdDetectionViewModel: ObservableObject {
+    enum FileAnalysisState: Equatable {
+        case idle
+        case running(fileName: String, progress: Double, windowsProcessed: Int, detectionsFound: Int)
+        case completed(fileName: String, windowsProcessed: Int, detectionsFound: Int)
+        case failed(String)
+    }
+
     @Published private(set) var detections: [BirdDetection] = []
     @Published private(set) var modelState: BirdNetCoreMLRecognizer.State = .stopped
     @Published private(set) var audioLevel: Float = 0
@@ -54,12 +61,16 @@ final class BirdDetectionViewModel: ObservableObject {
     @Published private(set) var species: [Bird] = []
     @Published private(set) var meterStats = AudioMeterStats()
     @Published private(set) var recognitionStats = RecognitionPipelineStats()
+    @Published private(set) var fileAnalysisState: FileAnalysisState = .idle
+    @Published private(set) var regionalLabel: String?
     @Published var showingEBirdForm = false
     @Published var selectedDetection: BirdDetection?
     @Published var selectedTab: MainWindowTab = .monitor
 
     enum MainWindowTab: Hashable {
         case monitor
+        case offline
+        case history
         case ignoreList
         case eBird
         case settings
@@ -69,12 +80,16 @@ final class BirdDetectionViewModel: ObservableObject {
 
     let settings = AppSettings.shared
     let audioHandler = AudioHandler()
+    let historyStore = RecognitionHistoryStore()
+    let locationProvider = LocationProvider()
 
     private let recognizer = BirdNetCoreMLRecognizer()
-    private var cooldown = Cooldown()
+    private var speciesCooldown = SpeciesCooldown()
+    private var fileAnalysisCooldown = TimelineSpeciesCooldown()
     private var rateLimiter = NotificationRateLimiter()
     private let recognitionQueue = RecognitionSerialQueue()
     private var runtimeTask: Task<Void, Never>?
+    private var fileAnalysisTask: Task<Void, Never>?
     private var hasBootstrapped = false
 
     init() {
@@ -104,12 +119,14 @@ final class BirdDetectionViewModel: ObservableObject {
         }
         audioHandler.refreshPermissionStatus()
         audioHandler.setInputGain(dB: settings.inputGainDB)
+        syncLocationAccess()
         await refreshRuntime()
         await loadSpeciesWhenReady()
 
         runtimeTask = Task {
             while !Task.isCancelled {
                 await refreshRuntime()
+                await refreshRegionalDataIfNeeded()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
@@ -118,6 +135,8 @@ final class BirdDetectionViewModel: ObservableObject {
     func shutdown() {
         runtimeTask?.cancel()
         runtimeTask = nil
+        fileAnalysisTask?.cancel()
+        fileAnalysisTask = nil
         Task { await recognitionQueue.cancel() }
         audioHandler.stop()
         Task { await recognizer.stop() }
@@ -136,6 +155,8 @@ final class BirdDetectionViewModel: ObservableObject {
         case .ready:
             if audioHandler.isRunning {
                 statusMessage = "Listening"
+            } else if case .running = fileAnalysisState {
+                break
             } else {
                 statusMessage = "Ready"
             }
@@ -164,11 +185,17 @@ final class BirdDetectionViewModel: ObservableObject {
     var canStartListening: Bool {
         guard modelState == .ready else { return false }
         guard !isListening else { return false }
+        guard fileAnalysisTask == nil else { return false }
         return !audioHandler.isPermissionDenied
     }
 
     var canStopListening: Bool {
         isListening
+    }
+
+    var isAnalyzingFile: Bool {
+        if case .running = fileAnalysisState { return true }
+        return false
     }
 
     func startListening() {
@@ -188,6 +215,84 @@ final class BirdDetectionViewModel: ObservableObject {
         Task { await refreshRuntime() }
     }
 
+    func analyzeAudioFile(at url: URL) {
+        fileAnalysisTask?.cancel()
+        stopListening()
+
+        let fileName = url.lastPathComponent
+        fileAnalysisCooldown.reset()
+        fileAnalysisState = .running(fileName: fileName, progress: 0, windowsProcessed: 0, detectionsFound: 0)
+
+        fileAnalysisTask = Task {
+            do {
+                let samples = try AudioFileLoader.loadSamples(from: url)
+                let hopSamples = AudioFileLoader.windowSamples / 2
+                let windows = AudioFileLoader.windows(from: samples, hopSamples: hopSamples)
+                guard !windows.isEmpty else {
+                    fileAnalysisState = .failed("Audio file is empty.")
+                    fileAnalysisTask = nil
+                    await refreshRuntime()
+                    return
+                }
+
+                var detectionsFound = 0
+                for (index, window) in windows.enumerated() {
+                    try Task.checkCancellation()
+                    let pcmData = AudioFileLoader.pcmData(from: window)
+                    let offsetSeconds = AudioFileLoader.offsetSeconds(forWindowIndex: index, hopSamples: hopSamples)
+                    if await performRecognition(
+                        data: pcmData,
+                        sampleRate: AudioFileLoader.modelSampleRate,
+                        source: .file,
+                        sourceFileName: fileName,
+                        audioOffsetSeconds: offsetSeconds,
+                        notify: true
+                    ) {
+                        detectionsFound += 1
+                    }
+
+                    let progress = Double(index + 1) / Double(windows.count)
+                    fileAnalysisState = .running(
+                        fileName: fileName,
+                        progress: progress,
+                        windowsProcessed: index + 1,
+                        detectionsFound: detectionsFound
+                    )
+                }
+
+                fileAnalysisState = .completed(
+                    fileName: fileName,
+                    windowsProcessed: windows.count,
+                    detectionsFound: detectionsFound
+                )
+            } catch is CancellationError {
+                fileAnalysisState = .idle
+            } catch {
+                fileAnalysisState = .failed(error.localizedDescription)
+            }
+
+            fileAnalysisTask = nil
+            await refreshRuntime()
+        }
+    }
+
+    func syncLocationAccess() {
+        if settings.locationFilteringEnabled {
+            locationProvider.request()
+            Task { await refreshRegionalDataIfNeeded() }
+        } else {
+            locationProvider.stop()
+            regionalLabel = nil
+        }
+    }
+
+    func cancelFileAnalysis() {
+        fileAnalysisTask?.cancel()
+        fileAnalysisTask = nil
+        fileAnalysisState = .idle
+        Task { await refreshRuntime() }
+    }
+
     func reconfigureSpectrogram() {
         audioHandler.reconfigureSpectrogram(settings: settings)
     }
@@ -202,7 +307,6 @@ final class BirdDetectionViewModel: ObservableObject {
     }
 
     func submitToEBird(for detection: BirdDetection) {
-        selectedDetection = detection
         selectedTab = .eBird
         openMainWindow()
     }
@@ -210,6 +314,24 @@ final class BirdDetectionViewModel: ObservableObject {
     func submitToEBirdSheet(for detection: BirdDetection) {
         selectedDetection = detection
         showingEBirdForm = true
+    }
+
+    func deleteDetection(_ detection: BirdDetection) {
+        detections.removeAll { $0.id == detection.id }
+        historyStore.remove(id: detection.id)
+        if selectedDetection?.id == detection.id {
+            selectedDetection = nil
+        }
+    }
+
+    func clearRecentDetections() {
+        detections.removeAll()
+        settings.recentClearedAt = Date()
+        selectedDetection = nil
+    }
+
+    var sessionSpecies: [SessionSpeciesSummary] {
+        historyStore.uniqueSpecies(since: settings.recentClearedAt)
     }
 
     func ignore(detection: BirdDetection) {
@@ -225,32 +347,6 @@ final class BirdDetectionViewModel: ObservableObject {
         guard species.isEmpty else { return }
         guard await recognizer.currentState() == .ready else { return }
         species = await recognizer.speciesCatalog()
-    }
-
-    /// Inserts a fake detection for UI/notification testing. Bypasses threshold, ignore list, and cooldown.
-    func injectTestDetection() {
-        let samples: [(name: String, scientific: String, id: Int)] = [
-            ("American Robin", "Turdus migratorius", 10_001),
-            ("Northern Cardinal", "Cardinalis cardinalis", 10_002),
-            ("Blue Jay", "Cyanocitta cristata", 10_003),
-            ("Black-capped Chickadee", "Poecile atricapillus", 10_004),
-            ("Mourning Dove", "Zenaida macroura", 10_005),
-        ]
-        let sample = samples.randomElement() ?? samples[0]
-        let detection = BirdDetection(
-            birdName: sample.name,
-            scientificName: sample.scientific,
-            confidence: Double.random(in: 0.72...0.95),
-            birdId: sample.id,
-            inferenceMs: Int.random(in: 80...250)
-        )
-        detections.insert(detection, at: 0)
-        if detections.count > 50 {
-            detections = Array(detections.prefix(50))
-        }
-        if settings.notificationsEnabled {
-            Task { await sendNotification(for: detection) }
-        }
     }
 
     private func startAudioIfPossible() async {
@@ -285,32 +381,78 @@ final class BirdDetectionViewModel: ObservableObject {
         }
     }
 
-    private func performRecognition(data: Data, sampleRate: Int) async {
-        guard await recognizer.currentState() == .ready else { return }
+    private func refreshRegionalDataIfNeeded() async {
+        guard settings.locationFilteringEnabled else { return }
+        guard let location = locationProvider.lastKnownLocation else { return }
+        await EBirdRegionalService.shared.refreshIfNeeded(
+            location: location,
+            apiKey: settings.resolvedEBirdApiKey
+        )
+        regionalLabel = await EBirdRegionalService.shared.currentRegionLabel()
+    }
+
+    @discardableResult
+    private func performRecognition(
+        data: Data,
+        sampleRate: Int,
+        source: DetectionSource = .live,
+        sourceFileName: String? = nil,
+        audioOffsetSeconds: Double? = nil,
+        notify: Bool = true
+    ) async -> Bool {
+        guard await recognizer.currentState() == .ready else { return false }
         recognitionStats.isInFlight = true
+
+        defer {
+            recognitionStats.isInFlight = false
+            recognitionStats.lastCompletedAt = Date()
+        }
+
         do {
             let result = try await recognizer.recognize(pcmData: data, sampleRate: sampleRate)
             recognitionStats.lastInferenceMs = result.inferenceMs
-            if settings.debugLogging, let response = result.detection {
-                print(
-                    "[BirdNet] recognize \(response.bird) (\(response.scientificName)) " +
-                    "conf=\(String(format: "%.3f", response.confidence)) \(result.inferenceMs)ms"
-                )
-            } else if settings.debugLogging {
-                print("[BirdNet] recognize (no match) \(result.inferenceMs)ms")
+            if result.detections.isEmpty {
+                RecognitionLogger.log("recognize (no match) \(result.inferenceMs)ms")
+            } else {
+                for response in result.detections {
+                    RecognitionLogger.log(
+                        "recognize \(response.bird) (\(response.scientificName)) " +
+                        "conf=\(String(format: "%.3f", response.confidence)) \(result.inferenceMs)ms" +
+                        (source == .file ? " file=\(sourceFileName ?? "") offset=\(audioOffsetSeconds ?? 0)s" : "")
+                    )
+                }
             }
-            guard let response = result.detection else { return }
-            await handleRecognition(response)
+
+            var recordedAny = false
+            for response in result.detections {
+                if await handleRecognition(
+                    response,
+                    source: source,
+                    sourceFileName: sourceFileName,
+                    audioOffsetSeconds: audioOffsetSeconds,
+                    notify: notify
+                ) {
+                    recordedAny = true
+                }
+            }
+            recognitionStats.skippedWindows = await recognitionQueue.skippedWindows
+            return recordedAny
         } catch {
-            if Task.isCancelled { return }
+            if Task.isCancelled { return false }
             statusMessage = error.localizedDescription
+            recognitionStats.skippedWindows = await recognitionQueue.skippedWindows
+            return false
         }
-        recognitionStats.isInFlight = false
-        recognitionStats.lastCompletedAt = Date()
-        recognitionStats.skippedWindows = await recognitionQueue.skippedWindows
     }
 
-    private func handleRecognition(_ response: RecognitionResponse) async {
+    @discardableResult
+    private func handleRecognition(
+        _ response: RecognitionResponse,
+        source: DetectionSource = .live,
+        sourceFileName: String? = nil,
+        audioOffsetSeconds: Double? = nil,
+        notify: Bool = true
+    ) async -> Bool {
         let ignoreList = IgnoreList(
             speciesIDs: settings.ignoredSpeciesIDs,
             speciesNames: settings.ignoredSpeciesNames
@@ -319,33 +461,93 @@ final class BirdDetectionViewModel: ObservableObject {
             var stats = recognitionStats
             stats.belowThresholdCount += 1
             recognitionStats = stats
-            return
+            return false
         }
         if ignoreList.isSpeciesIgnored(birdId: response.id, birdName: response.bird) {
             settings.recordSuppressed(birdName: response.bird)
-            return
+            return false
         }
-        guard cooldown.shouldAllow(baseDelay: settings.cooldownSeconds) else { return }
-        guard rateLimiter.shouldAllow(maxPerHour: settings.maxNotificationsPerHour) else { return }
 
-        cooldown.markNotified(baseDelay: settings.cooldownSeconds)
-        rateLimiter.markNotified()
+        let rarity = await lookupRarity(scientificName: response.scientificName)
+
+        if settings.locationFilteringEnabled,
+           let rarity,
+           rarity.level == .unusual,
+           response.confidence < settings.confidenceThreshold + 0.1 {
+            RecognitionLogger.log(
+                "suppressed unusual species below boosted threshold: \(response.bird) " +
+                "conf=\(String(format: "%.3f", response.confidence))"
+            )
+            return false
+        }
+
+        if source == .file {
+            let offset = audioOffsetSeconds ?? 0
+            guard fileAnalysisCooldown.shouldAllow(speciesId: response.id, now: offset) else {
+                return false
+            }
+        }
 
         let detection = BirdDetection(
             birdName: response.bird,
             scientificName: response.scientificName,
             confidence: response.confidence,
             birdId: response.id,
-            inferenceMs: response.timeMs
+            inferenceMs: response.timeMs,
+            source: source,
+            sourceFileName: sourceFileName,
+            audioOffsetSeconds: audioOffsetSeconds,
+            rarity: rarity
         )
+        recordDetection(detection)
+
+        if source == .file {
+            fileAnalysisCooldown.markQualified(
+                speciesId: response.id,
+                cooldownSeconds: settings.perSpeciesCooldownSeconds,
+                now: audioOffsetSeconds ?? 0
+            )
+        }
+
+        var shouldNotify = notify
+        if shouldNotify {
+            if source == .file {
+                shouldNotify = rateLimiter.shouldAllow(maxPerHour: settings.maxNotificationsPerHour)
+            } else {
+                shouldNotify = speciesCooldown.shouldAllow(speciesId: response.id)
+                    && rateLimiter.shouldAllow(maxPerHour: settings.maxNotificationsPerHour)
+            }
+        }
+        if shouldNotify {
+            if source != .file {
+                speciesCooldown.markNotified(
+                    speciesId: response.id,
+                    cooldownSeconds: settings.perSpeciesCooldownSeconds
+                )
+            }
+            rateLimiter.markNotified()
+            if settings.notificationsEnabled {
+                await sendNotification(for: detection)
+            }
+        }
+
+        return true
+    }
+
+    private func lookupRarity(scientificName: String) async -> RarityInfo? {
+        guard settings.locationFilteringEnabled else { return nil }
+        return await EBirdRegionalService.shared.rarity(
+            for: scientificName,
+            apiKey: settings.resolvedEBirdApiKey
+        )
+    }
+
+    private func recordDetection(_ detection: BirdDetection) {
         detections.insert(detection, at: 0)
         if detections.count > 50 {
             detections = Array(detections.prefix(50))
         }
-
-        if settings.notificationsEnabled {
-            await sendNotification(for: detection)
-        }
+        historyStore.append(detection)
     }
 
     private func sendNotification(for detection: BirdDetection) async {
@@ -360,7 +562,11 @@ final class BirdDetectionViewModel: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "🐦 \(detection.birdName)"
         content.subtitle = detection.scientificName
-        content.body = String(format: "Confidence %.0f%%", detection.confidence * 100)
+        var body = String(format: "Confidence %.0f%%", detection.confidence * 100)
+        if let rarity = detection.rarity, rarity.level == .unusual {
+            body += " · Unusual for your area"
+        }
+        content.body = body
         if settings.notificationSoundEnabled {
             content.sound = .default
         }

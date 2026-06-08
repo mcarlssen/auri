@@ -119,6 +119,19 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Minimum seconds between notifications for the same species.
+    @Published var perSpeciesCooldownSeconds: Double {
+        didSet { save() }
+    }
+
+    @Published var locationFilteringEnabled: Bool {
+        didSet { save() }
+    }
+
+    @Published var eBirdApiKey: String {
+        didSet { save() }
+    }
+
     @Published var notificationsEnabled: Bool {
         didSet { save() }
     }
@@ -202,8 +215,26 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Detections after this time count toward the eBird session species list.
+    @Published var recentClearedAt: Date {
+        didSet { save() }
+    }
+
     var spectrogramHopSize: Int {
         spectrogramOverlap.hopSize(fftSize: spectrogramFFTSize.rawValue)
+    }
+
+    /// UserDefaults value, falling back to `EBIRD_API_KEY` in `.env` when unset.
+    var resolvedEBirdApiKey: String {
+        let trimmed = eBirdApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return DotEnv.value(for: "EBIRD_API_KEY") ?? ""
+    }
+
+    var eBirdApiKeySourceLabel: String? {
+        let trimmed = eBirdApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return nil }
+        return resolvedEBirdApiKey.isEmpty ? nil : "Loaded from .env"
     }
 
     private let defaults = UserDefaults.standard
@@ -211,6 +242,9 @@ final class AppSettings: ObservableObject {
     private init() {
         confidenceThreshold = defaults.object(forKey: "confidenceThreshold") as? Double ?? 0.6
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
+        perSpeciesCooldownSeconds = defaults.object(forKey: "perSpeciesCooldownSeconds") as? Double ?? 3600
+        locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
+        eBirdApiKey = defaults.string(forKey: "eBirdApiKey") ?? ""
         notificationsEnabled = defaults.object(forKey: "notificationsEnabled") as? Bool ?? true
         notificationSoundEnabled = defaults.object(forKey: "notificationSoundEnabled") as? Bool ?? true
         maxNotificationsPerHour = defaults.object(forKey: "maxNotificationsPerHour") as? Int ?? 30
@@ -234,6 +268,7 @@ final class AppSettings: ObservableObject {
         spectrogramMinFrequency = defaults.object(forKey: "spectrogramMinFrequency") as? Double ?? 100
         spectrogramMaxFrequency = defaults.object(forKey: "spectrogramMaxFrequency") as? Double ?? 15_000
         suppressedCounts = defaults.dictionary(forKey: "suppressedCounts") as? [String: Int] ?? [:]
+        recentClearedAt = defaults.object(forKey: "recentClearedAt") as? Date ?? Date()
     }
 
     func ignore(bird: Bird) {
@@ -276,6 +311,9 @@ final class AppSettings: ObservableObject {
     private func save() {
         defaults.set(confidenceThreshold, forKey: "confidenceThreshold")
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
+        defaults.set(perSpeciesCooldownSeconds, forKey: "perSpeciesCooldownSeconds")
+        defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")
+        defaults.set(eBirdApiKey, forKey: "eBirdApiKey")
         defaults.set(notificationsEnabled, forKey: "notificationsEnabled")
         defaults.set(notificationSoundEnabled, forKey: "notificationSoundEnabled")
         defaults.set(maxNotificationsPerHour, forKey: "maxNotificationsPerHour")
@@ -294,5 +332,6 @@ final class AppSettings: ObservableObject {
         defaults.set(spectrogramMinFrequency, forKey: "spectrogramMinFrequency")
         defaults.set(spectrogramMaxFrequency, forKey: "spectrogramMaxFrequency")
         defaults.set(suppressedCounts, forKey: "suppressedCounts")
+        defaults.set(recentClearedAt, forKey: "recentClearedAt")
     }
 }

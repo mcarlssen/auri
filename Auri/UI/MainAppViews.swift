@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MainWindowView: View {
@@ -8,6 +9,14 @@ struct MainWindowView: View {
             MonitorView(viewModel: viewModel)
                 .tabItem { Label("Monitor", systemImage: "waveform.path.ecg") }
                 .tag(BirdDetectionViewModel.MainWindowTab.monitor)
+
+            OfflineAnalysisTabView(viewModel: viewModel)
+                .tabItem { Label("Offline", systemImage: "doc.text.magnifyingglass") }
+                .tag(BirdDetectionViewModel.MainWindowTab.offline)
+
+            HistoryTabView(viewModel: viewModel)
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(BirdDetectionViewModel.MainWindowTab.history)
 
             IgnoreListTabView(viewModel: viewModel)
                 .tabItem { Label("Ignore List", systemImage: "eye.slash") }
@@ -25,7 +34,8 @@ struct MainWindowView: View {
         .sheet(isPresented: $viewModel.showingEBirdForm) {
             EBirdFormView(
                 detection: viewModel.selectedDetection,
-                species: viewModel.species
+                species: viewModel.species,
+                prefilledCoordinate: viewModel.locationProvider.lastKnownLocation?.coordinate
             )
         }
     }
@@ -213,8 +223,11 @@ struct MonitorView: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Test detection", action: viewModel.injectTestDetection)
-                    .font(.caption)
+                Button("Clear recent") {
+                    viewModel.clearRecentDetections()
+                }
+                .font(.caption)
+                .disabled(viewModel.detections.isEmpty)
             }
 
             if viewModel.detections.isEmpty {
@@ -228,8 +241,10 @@ struct MonitorView: View {
                         ForEach(viewModel.detections) { detection in
                             DetectionCardView(
                                 detection: detection,
+                                lifetimeCount: viewModel.historyStore.lifetimeCount(for: detection.birdId),
                                 isIgnored: viewModel.isIgnored(detection),
                                 onIgnore: { viewModel.ignore(detection: detection) },
+                                onDelete: { viewModel.deleteDetection(detection) },
                                 onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
                             )
                         }
@@ -346,127 +361,111 @@ struct IgnoreListTabView: View {
 
 struct EBirdBatchView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
-    @StateObject private var locationProvider = LocationProvider()
+    @ObservedObject private var settings: AppSettings
+    @ObservedObject private var historyStore: RecognitionHistoryStore
 
-    @State private var selectedIDs: Set<UUID> = []
-    @State private var observedDate = Date()
-    @State private var location = ""
-    @State private var method = "Audio"
-    @State private var notes = ""
-    @State private var feedback = ""
+    @State private var copyFeedback = ""
 
-    private let methods = ["Audio", "Direct ID"]
+    init(viewModel: BirdDetectionViewModel) {
+        self.viewModel = viewModel
+        self.settings = viewModel.settings
+        self.historyStore = viewModel.historyStore
+    }
+
+    private var sessionSpecies: [SessionSpeciesSummary] {
+        viewModel.sessionSpecies
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Batch submit to eBird")
+                Text("eBird species list")
                     .font(.title2.bold())
 
-                Text("Select detections, fill shared metadata, then submit. Summaries are copied to the clipboard and eBird opens in your browser.")
+                Text(sessionWindowDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if viewModel.detections.isEmpty {
-                    Text("No detections to submit.")
+                Text("Unique species detected since you last cleared Recent detections. Copy the list and enter observations manually on eBird.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    Button("Copy species list") {
+                        copySpeciesList()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(sessionSpecies.isEmpty)
+
+                    Link("Open eBird submission page", destination: URL(string: "https://ebird.org/submit")!)
+                }
+
+                if !copyFeedback.isEmpty {
+                    Text(copyFeedback)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if sessionSpecies.isEmpty {
+                    Text("No species detected in this session yet.")
                         .foregroundStyle(.secondary)
                 } else {
-                    detectionPicker
+                    Text("\(sessionSpecies.count) species")
+                        .font(.headline)
 
-                    DatePicker("Observed", selection: $observedDate, displayedComponents: [.date, .hourAndMinute])
-
-                    TextField("Location", text: $location)
-
-                    Picker("Method", selection: $method) {
-                        ForEach(methods, id: \.self) { value in
-                            Text(value).tag(value)
+                    ForEach(sessionSpecies) { species in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(species.birdName)
+                                .font(.body)
+                            Text(species.scientificName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if species.detectionCount > 1 {
+                                Text("\(species.detectionCount) detections · last \(species.lastSeen.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                    }
-
-                    TextField("Notes (optional prefix for each observation)", text: $notes, axis: .vertical)
-                        .lineLimit(2...4)
-
-                    HStack {
-                        Button("Select all") {
-                            selectedIDs = Set(viewModel.detections.map(\.id))
-                        }
-                        Button("Clear") {
-                            selectedIDs.removeAll()
-                        }
-                        Spacer()
-                        Button("Submit selected (\(selectedIDs.count))") {
-                            submitSelected()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selectedIDs.isEmpty)
-                    }
-
-                    if !feedback.isEmpty {
-                        Text(feedback)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
                     }
                 }
+
+                EBirdAttributionView()
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear {
-            locationProvider.request()
-            if let coordinate = locationProvider.lastKnownLocation?.coordinate {
-                location = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
-            }
-            if let detection = viewModel.selectedDetection {
-                selectedIDs.insert(detection.id)
-            }
-        }
-        .onChange(of: viewModel.selectedDetection?.id) { _, newID in
-            guard let newID else { return }
-            selectedIDs.insert(newID)
-        }
     }
 
-    private var detectionPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Detections")
-                .font(.headline)
+    private var sessionWindowDescription: String {
+        let start = settings.recentClearedAt
+        let duration = Self.formatDuration(since: start)
+        return "Since \(start.formatted(date: .abbreviated, time: .shortened)) (\(duration))"
+    }
 
-            ForEach(viewModel.detections) { detection in
-                Toggle(isOn: binding(for: detection.id)) {
-                    VStack(alignment: .leading) {
-                        Text(detection.birdName)
-                        Text("\(detection.scientificName) · \(Int(detection.confidence * 100))% · \(detection.timestamp.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+    private func copySpeciesList() {
+        let lines = sessionSpecies.map { "\($0.birdName) (\($0.scientificName))" }
+        let text = lines.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copyFeedback = "\(lines.count) species copied to clipboard."
+    }
+
+    private static func formatDuration(since date: Date) -> String {
+        let interval = max(0, Date().timeIntervalSince(date))
+        if interval < 60 {
+            return "just now"
         }
-    }
-
-    private func binding(for id: UUID) -> Binding<Bool> {
-        Binding(
-            get: { selectedIDs.contains(id) },
-            set: { enabled in
-                if enabled {
-                    selectedIDs.insert(id)
-                } else {
-                    selectedIDs.remove(id)
-                }
-            }
-        )
-    }
-
-    private func submitSelected() {
-        let selected = viewModel.detections.filter { selectedIDs.contains($0.id) }
-        EBirdSubmission.submitBatch(
-            detections: selected,
-            observedDate: observedDate,
-            location: location,
-            method: method,
-            notesPrefix: notes
-        )
-        feedback = "\(selected.count) observation\(selected.count == 1 ? "" : "s") copied to clipboard. Complete submission in your browser."
+        if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        }
+        if interval < 86_400 {
+            let hours = interval / 3600
+            return hours < 2 ? String(format: "%.1f hour", hours) : String(format: "%.1f hours", hours)
+        }
+        let days = interval / 86_400
+        return days < 2 ? String(format: "%.1f day", days) : String(format: "%.1f days", days)
     }
 }
 

@@ -31,6 +31,17 @@
 		A10000000000000000000029 /* BirdNetCoreMLRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */; };
 		A10000000000000000000030 /* audio-model-fp16.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000032 /* audio-model-fp16.mlpackage */; };
 		A10000000000000000000031 /* en_us.txt in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000033 /* en_us.txt */; };
+		A10000000000000000000032 /* AudioFileLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000034 /* AudioFileLoader.swift */; };
+		A10000000000000000000033 /* RecognitionLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000035 /* RecognitionLogger.swift */; };
+		A10000000000000000000034 /* LocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* LocationProvider.swift */; };
+		A10000000000000000000035 /* RecognitionHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000037 /* RecognitionHistoryStore.swift */; };
+		A10000000000000000000036 /* EBirdRegionalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000038 /* EBirdRegionalService.swift */; };
+		A10000000000000000000037 /* RarityInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* RarityInfo.swift */; };
+		A10000000000000000000038 /* HistoryTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000040 /* HistoryTabView.swift */; };
+		A10000000000000000000039 /* DotEnv.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000041 /* DotEnv.swift */; };
+		A10000000000000000000040 /* EBirdAttributionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000042 /* EBirdAttributionView.swift */; };
+		A10000000000000000000041 /* LocationStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000043 /* LocationStatusView.swift */; };
+		A10000000000000000000042 /* OfflineAnalysisTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000044 /* OfflineAnalysisTabView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +71,17 @@
 		A20000000000000000000027 /* AudioMeterStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMeterStats.swift; sourceTree = "<group>"; };
 		A20000000000000000000029 /* SpectrogramEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramEngine.swift; sourceTree = "<group>"; };
 		A20000000000000000000030 /* SpectrogramView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrogramView.swift; sourceTree = "<group>"; };
+		A20000000000000000000034 /* AudioFileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileLoader.swift; sourceTree = "<group>"; };
+		A20000000000000000000035 /* RecognitionLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionLogger.swift; sourceTree = "<group>"; };
+		A20000000000000000000036 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
+		A20000000000000000000037 /* RecognitionHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionHistoryStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000038 /* EBirdRegionalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EBirdRegionalService.swift; sourceTree = "<group>"; };
+		A20000000000000000000039 /* RarityInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RarityInfo.swift; sourceTree = "<group>"; };
+		A20000000000000000000040 /* HistoryTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryTabView.swift; sourceTree = "<group>"; };
+		A20000000000000000000041 /* DotEnv.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotEnv.swift; sourceTree = "<group>"; };
+		A20000000000000000000042 /* EBirdAttributionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EBirdAttributionView.swift; sourceTree = "<group>"; };
+		A20000000000000000000043 /* LocationStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationStatusView.swift; sourceTree = "<group>"; };
+		A20000000000000000000044 /* OfflineAnalysisTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAnalysisTabView.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* Auri.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Auri.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -117,6 +139,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000003 /* AudioHandler.swift */,
+				A20000000000000000000034 /* AudioFileLoader.swift */,
 				A20000000000000000000027 /* AudioMeterStats.swift */,
 				A20000000000000000000029 /* SpectrogramEngine.swift */,
 			);
@@ -131,6 +154,11 @@
 				A20000000000000000000008 /* IgnoreList.swift */,
 				A20000000000000000000019 /* LaunchAtLoginManager.swift */,
 				A20000000000000000000021 /* EBirdSubmission.swift */,
+				A20000000000000000000035 /* RecognitionLogger.swift */,
+				A20000000000000000000036 /* LocationProvider.swift */,
+				A20000000000000000000037 /* RecognitionHistoryStore.swift */,
+				A20000000000000000000038 /* EBirdRegionalService.swift */,
+				A20000000000000000000041 /* DotEnv.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -140,6 +168,7 @@
 			children = (
 				A20000000000000000000004 /* Bird.swift */,
 				A20000000000000000000005 /* BirdDetection.swift */,
+				A20000000000000000000039 /* RarityInfo.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -161,6 +190,10 @@
 				A20000000000000000000015 /* EBirdFormView.swift */,
 				A20000000000000000000020 /* IgnoreListSettingsView.swift */,
 				A20000000000000000000026 /* MainAppViews.swift */,
+				A20000000000000000000040 /* HistoryTabView.swift */,
+				A20000000000000000000042 /* EBirdAttributionView.swift */,
+				A20000000000000000000043 /* LocationStatusView.swift */,
+				A20000000000000000000044 /* OfflineAnalysisTabView.swift */,
 				A20000000000000000000030 /* SpectrogramView.swift */,
 				A50000000000000000000011 /* ViewModel */,
 			);
@@ -295,6 +328,17 @@
 				A10000000000000000000025 /* AudioMeterStats.swift in Sources */,
 				A10000000000000000000027 /* SpectrogramEngine.swift in Sources */,
 				A10000000000000000000028 /* SpectrogramView.swift in Sources */,
+				A10000000000000000000032 /* AudioFileLoader.swift in Sources */,
+				A10000000000000000000033 /* RecognitionLogger.swift in Sources */,
+				A10000000000000000000034 /* LocationProvider.swift in Sources */,
+				A10000000000000000000035 /* RecognitionHistoryStore.swift in Sources */,
+				A10000000000000000000036 /* EBirdRegionalService.swift in Sources */,
+				A10000000000000000000037 /* RarityInfo.swift in Sources */,
+				A10000000000000000000038 /* HistoryTabView.swift in Sources */,
+				A10000000000000000000039 /* DotEnv.swift in Sources */,
+				A10000000000000000000040 /* EBirdAttributionView.swift in Sources */,
+				A10000000000000000000041 /* LocationStatusView.swift in Sources */,
+				A10000000000000000000042 /* OfflineAnalysisTabView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

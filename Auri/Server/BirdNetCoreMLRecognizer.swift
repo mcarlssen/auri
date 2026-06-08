@@ -3,9 +3,7 @@ import CryptoKit
 import Foundation
 
 private func RecognizerLog(_ message: @autoclosure () -> String) {
-    if UserDefaults.standard.bool(forKey: "debugLogging") {
-        print("[BirdNet] \(message())")
-    }
+    RecognitionLogger.log(message())
 }
 
 actor BirdNetCoreMLRecognizer {
@@ -20,9 +18,13 @@ actor BirdNetCoreMLRecognizer {
     static let windowSamples = modelSampleRate * 3
 
     struct RecognitionCallResult: Sendable {
-        let detection: RecognitionResponse?
+        let detections: [RecognitionResponse]
         let inferenceMs: Int
+
+        var detection: RecognitionResponse? { detections.first }
     }
+
+    static let maxResultsPerWindow = 10
 
     private struct SpeciesLabel: Sendable {
         let raw: String
@@ -119,7 +121,7 @@ actor BirdNetCoreMLRecognizer {
             throw RecognizerError.notReady
         }
         guard !pcmData.isEmpty else {
-            return RecognitionCallResult(detection: nil, inferenceMs: 0)
+            return RecognitionCallResult(detections: [], inferenceMs: 0)
         }
         guard pcmData.count % MemoryLayout<Float>.size == 0 else {
             throw RecognizerError.invalidPCM
@@ -146,23 +148,22 @@ actor BirdNetCoreMLRecognizer {
         guard let outputName = output.featureNames.first,
               let value = output.featureValue(for: outputName),
               let scores = value.multiArrayValue else {
-            return RecognitionCallResult(detection: nil, inferenceMs: inferenceMs)
+            return RecognitionCallResult(detections: [], inferenceMs: inferenceMs)
         }
 
-        let top = Self.topPrediction(from: scores)
-        guard let label = speciesLabels[safe: top.index] else {
-            return RecognitionCallResult(detection: nil, inferenceMs: inferenceMs)
+        let predictions = Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
+        let detections = predictions.compactMap { prediction -> RecognitionResponse? in
+            guard let label = speciesLabels[safe: prediction.index] else { return nil }
+            return RecognitionResponse(
+                bird: label.commonName,
+                id: label.id,
+                confidence: prediction.score,
+                score: prediction.score,
+                timeMs: inferenceMs,
+                scientificName: label.scientificName
+            )
         }
-
-        let response = RecognitionResponse(
-            bird: label.commonName,
-            id: label.id,
-            confidence: top.score,
-            score: top.score,
-            timeMs: inferenceMs,
-            scientificName: label.scientificName
-        )
-        return RecognitionCallResult(detection: response, inferenceMs: inferenceMs)
+        return RecognitionCallResult(detections: detections, inferenceMs: inferenceMs)
     }
 
     private enum RecognizerError: Error, LocalizedError {
@@ -267,18 +268,23 @@ actor BirdNetCoreMLRecognizer {
         return samples + [Float](repeating: 0, count: windowSamples - samples.count)
     }
 
-    private static func topPrediction(from scores: MLMultiArray) -> (index: Int, score: Double) {
+    private static func topPredictions(from scores: MLMultiArray, limit: Int) -> [(index: Int, score: Double)] {
         let count = scores.count
-        var bestIndex = 0
-        var bestScore = -Double.infinity
+        var best: [(index: Int, score: Double)] = []
+        best.reserveCapacity(limit)
+
         for index in 0..<count {
             let score = scores[index].doubleValue
-            if score > bestScore {
-                bestScore = score
-                bestIndex = index
+            if best.count < limit {
+                best.append((index, score))
+                best.sort { $0.score > $1.score }
+            } else if score > best.last!.score {
+                best[limit - 1] = (index, score)
+                best.sort { $0.score > $1.score }
             }
         }
-        return (bestIndex, bestScore)
+
+        return best
     }
 }
 

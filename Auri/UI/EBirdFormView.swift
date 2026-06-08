@@ -4,10 +4,10 @@ import SwiftUI
 
 struct EBirdFormView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var locationProvider = LocationProvider()
 
     let detection: BirdDetection?
     let species: [Bird]
+    var prefilledCoordinate: CLLocationCoordinate2D?
 
     @State private var selectedBirdID: Int = 0
     @State private var observedDate = Date()
@@ -63,8 +63,7 @@ struct EBirdFormView: View {
                 selectedBirdID = detection.birdId
                 notes = "Detected by Auri at \(detection.confidence * 100)% confidence."
             }
-            locationProvider.request()
-            if let coordinate = locationProvider.lastKnownLocation?.coordinate {
+            if let coordinate = prefilledCoordinate {
                 location = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
             }
         }
@@ -84,25 +83,5 @@ struct EBirdFormView: View {
         )
 
         feedback = "Observation summary copied to clipboard. Complete submission in your browser."
-    }
-}
-
-final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published var lastKnownLocation: CLLocation?
-    private var manager: CLLocationManager?
-
-    func request() {
-        let manager = CLLocationManager()
-        self.manager = manager
-        manager.delegate = self
-        manager.requestWhenInUseAuthorization()
-        manager.startUpdatingLocation()
-    }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        if let loc = locations.last {
-            lastKnownLocation = loc
-            manager.stopUpdatingLocation()
-        }
     }
 }

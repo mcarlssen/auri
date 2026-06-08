@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject var settings: AppSettings
+    @ObservedObject private var locationProvider: LocationProvider
     var embedded: Bool = false
 
     @State private var devices: [AVCaptureDevice] = []
@@ -13,6 +14,7 @@ struct SettingsView: View {
     init(viewModel: BirdDetectionViewModel, embedded: Bool = false) {
         self.viewModel = viewModel
         self.settings = viewModel.settings
+        self.locationProvider = viewModel.locationProvider
         self.embedded = embedded
     }
 
@@ -103,13 +105,53 @@ struct SettingsView: View {
                 Section("Notifications") {
                     Toggle("Enable notifications", isOn: $settings.notificationsEnabled)
                     Toggle("Play sound", isOn: $settings.notificationSoundEnabled)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Per-species cooldown: \(formatCooldown(settings.perSpeciesCooldownSeconds))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $settings.perSpeciesCooldownSeconds, in: 60...86_400, step: 60)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Max notifications per hour: \(settings.maxNotificationsPerHour)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Slider(
+                            value: Binding(
+                                get: { Double(settings.maxNotificationsPerHour) },
+                                set: { settings.maxNotificationsPerHour = Int($0) }
+                            ),
+                            in: 5...100,
+                            step: 5
+                        )
+                    }
+                }
+
+                Section("Location & rarity") {
+                    Toggle("Use location for regional filtering", isOn: $settings.locationFilteringEnabled)
+                        .onChange(of: settings.locationFilteringEnabled) { _, _ in
+                            viewModel.syncLocationAccess()
+                        }
+
+                    LocationStatusView(
+                        isEnabled: settings.locationFilteringEnabled,
+                        location: locationProvider.lastKnownLocation,
+                        authorizationStatus: locationProvider.authorizationStatus,
+                        regionalLabel: viewModel.regionalLabel
+                    )
+
+                    SecureField("eBird API key", text: $settings.eBirdApiKey)
+
+                    Text("BirdNET's audio model does not accept location input. When enabled, Auri uses your location and eBird regional checklists to flag unusual species and improve accuracy by filtering out-of-range false positives. Species not expected in your area require an additional 10% confidence to qualify; expected species are unaffected. Get a free API key at ebird.org/api/keygen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    EBirdAttributionView()
                 }
 
                 Section("Developer") {
                     Toggle("Debug logging", isOn: $settings.debugLogging)
-                    Button("Inject test detection") {
-                        viewModel.injectTestDetection()
-                    }
                 }
             }
             .formStyle(.grouped)
@@ -117,6 +159,7 @@ struct SettingsView: View {
         .onAppear {
             loadDevices()
             settings.launchAtLogin = LaunchAtLoginManager.isEnabled
+            viewModel.syncLocationAccess()
         }
         .task {
             await viewModel.reloadSpeciesIfNeeded()
@@ -128,6 +171,18 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func formatCooldown(_ seconds: Double) -> String {
+        if seconds >= 3600, seconds.truncatingRemainder(dividingBy: 3600) == 0 {
+            let hours = Int(seconds / 3600)
+            return hours == 1 ? "1 hour" : "\(hours) hours"
+        }
+        if seconds >= 60, seconds.truncatingRemainder(dividingBy: 60) == 0 {
+            let minutes = Int(seconds / 60)
+            return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        }
+        return "\(Int(seconds)) seconds"
     }
 
     private func loadDevices() {

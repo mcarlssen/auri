@@ -17,3 +17,5 @@ __pycache__/
 Tools/CoreMLSpike/Models/
 Tools/CoreMLSpike/.build/
 Auri/Resources/BirdNet/audio-model-fp16.mlpackage
+.env
+**/.env
