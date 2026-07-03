@@ -81,11 +81,13 @@ actor BirdNetCoreMLRecognizer {
             }
 
             let silence = [Float](repeating: 0, count: Self.windowSamples)
-            let warmupProvider = try Self.makeInputProvider(
-                samples: silence,
-                featureName: inputName
-            )
-            _ = try await loadedModel.prediction(from: warmupProvider)
+            try autoreleasepool {
+                let warmupProvider = try Self.makeInputProvider(
+                    samples: silence,
+                    featureName: inputName
+                )
+                _ = try loadedModel.prediction(from: warmupProvider)
+            }
 
             model = loadedModel
             inputFeatureName = inputName
@@ -145,18 +147,22 @@ actor BirdNetCoreMLRecognizer {
 
         RecognizerLog("recognize samples=\(samples.count) sr=\(sampleRate)")
         let started = CFAbsoluteTimeGetCurrent()
-        let provider = try Self.makeInputProvider(samples: samples, featureName: inputFeatureName)
-        let output = try await model.prediction(from: provider)
+        // The prediction's IOSurface-backed input/output buffers are autoreleased,
+        // and this actor's cooperative thread never drains its pool on its own, so
+        // every window leaks its buffers until the pool is drained explicitly.
+        // Extract plain Swift values before leaving the pool.
+        let predictions: [(index: Int, score: Double)] = try autoreleasepool {
+            let provider = try Self.makeInputProvider(samples: samples, featureName: inputFeatureName)
+            let output = try model.prediction(from: provider)
+            guard let outputName = output.featureNames.first,
+                  let value = output.featureValue(for: outputName),
+                  let scores = value.multiArrayValue else {
+                return []
+            }
+            return Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
+        }
         let inferenceMs = Int((CFAbsoluteTimeGetCurrent() - started) * 1000)
         RecognizerLog("inference finished \(inferenceMs)ms")
-
-        guard let outputName = output.featureNames.first,
-              let value = output.featureValue(for: outputName),
-              let scores = value.multiArrayValue else {
-            return RecognitionCallResult(detections: [], inferenceMs: inferenceMs, autoGainDB: appliedAutoGainDB)
-        }
-
-        let predictions = Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
         let detections = predictions.compactMap { prediction -> RecognitionResponse? in
             guard let label = speciesLabels[safe: prediction.index] else { return nil }
             return RecognitionResponse(

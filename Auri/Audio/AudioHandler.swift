@@ -67,6 +67,7 @@ final class AudioHandler: ObservableObject {
     private var activeCaptureKey: CaptureKey?
     private var processingBacklog = 0
     private let maxProcessingBacklog = 6
+    private let processingBacklogLock = NSLock()
     private var loggedPassthrough = false
 
     private struct CaptureKey: Equatable {
@@ -261,11 +262,30 @@ final class AudioHandler: ObservableObject {
 
         captureDelegate.onSampleBuffer = { [weak self] sampleBuffer in
             guard let self else { return }
+            // Count queued buffers at enqueue time, on the capture callback. The
+            // processing queue is serial, so counting inside the work item can
+            // never observe a backlog above 1 — if processing falls behind, the
+            // queue would retain an unbounded pile of CMSampleBuffers instead of
+            // shedding load.
+            self.processingBacklogLock.lock()
+            guard self.processingBacklog < self.maxProcessingBacklog else {
+                self.processingBacklogLock.unlock()
+                return
+            }
+            self.processingBacklog += 1
+            self.processingBacklogLock.unlock()
             self.processingQueue.async {
-                self.processingBacklog += 1
-                defer { self.processingBacklog -= 1 }
-                guard self.processingBacklog <= self.maxProcessingBacklog else { return }
-                self.handle(sampleBuffer: sampleBuffer)
+                defer {
+                    self.processingBacklogLock.lock()
+                    self.processingBacklog -= 1
+                    self.processingBacklogLock.unlock()
+                }
+                // The queue never goes idle while listening, so its implicit
+                // autorelease pool rarely drains; the PCM buffers and converter
+                // scratch allocated per callback need an explicit pool.
+                autoreleasepool {
+                    self.handle(sampleBuffer: sampleBuffer)
+                }
             }
         }
         audioOutput.setSampleBufferDelegate(captureDelegate, queue: captureQueue)
