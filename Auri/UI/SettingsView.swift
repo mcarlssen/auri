@@ -102,7 +102,33 @@ struct SettingsView: View {
 
                     Toggle("Auto-gain before inference", isOn: $settings.autoGainEnabled)
 
-                    Text("Live analysis uses 50% overlapping 3-second windows. Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try 25–40% threshold or use the suggested value after a minute of listening.")
+                    Picker("Window overlap", selection: $settings.detectionOverlap) {
+                        ForEach(DetectionOverlap.allCases) { overlap in
+                            Text(overlap.label).tag(overlap)
+                        }
+                    }
+                    .onChange(of: settings.detectionOverlap) { _, _ in
+                        viewModel.applyDetectionPipelineSettings()
+                    }
+
+                    Toggle("Skip silent windows", isOn: $settings.silenceSkipEnabled)
+                        .onChange(of: settings.silenceSkipEnabled) { _, _ in
+                            viewModel.applySilenceGate()
+                        }
+
+                    if settings.silenceSkipEnabled {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Silence threshold: \(Int(settings.silenceSkipThresholdDB)) dBFS peak")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $settings.silenceSkipThresholdDB, in: -80 ... -30, step: 1)
+                        }
+                        .onChange(of: settings.silenceSkipThresholdDB) { _, _ in
+                            viewModel.applySilenceGate()
+                        }
+                    }
+
+                    Text("BirdNET analyzes fixed 3-second windows; overlap controls how often a new window starts. More overlap catches calls that straddle window boundaries and lowers detection latency, at the cost of more inference. The silence gate skips inference when a window's peak level (after sensitivity gain, shown in the Monitor meter) stays below the threshold. Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try 25–40% threshold or use the suggested value after a minute of listening.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

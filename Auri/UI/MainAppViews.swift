@@ -68,6 +68,13 @@ struct InferenceStatsView: View {
                     .foregroundStyle(.orange)
             }
 
+            if stats.silentWindowsSkipped > 0 {
+                Text("Silent: \(stats.silentWindowsSkipped)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .help("Windows skipped by the silence gate without running inference")
+            }
+
             if stats.isCriticallyBehind {
                 Text("Inference falling behind real-time")
                     .font(.caption)
@@ -214,6 +221,8 @@ struct MonitorView: View {
                 InferenceStatsView(stats: viewModel.recognitionStats, isListening: viewModel.isListening)
                 SpectrogramView(snapshot: audioHandler.spectrogram)
                     .layoutPriority(-1)
+                    .onAppear { audioHandler.setSpectrogramVisible(true) }
+                    .onDisappear { audioHandler.setSpectrogramVisible(false) }
             }
             .frame(maxWidth: .infinity)
 

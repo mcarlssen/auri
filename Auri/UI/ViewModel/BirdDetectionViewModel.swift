@@ -107,12 +107,13 @@ final class BirdDetectionViewModel: ObservableObject {
         LaunchAtLoginManager.sync(with: settings.launchAtLogin)
         settings.recordingEnabled = settings.startListeningAtLogin
         await recognizer.start()
+        // Backpressure lives in RecognitionSerialQueue, which holds at most the
+        // latest pending window. Gating enqueues on isCriticallyBehind here was
+        // worse than useless: skippedWindows only ever grows, so after three
+        // lifetime skips the gate started dropping windows forever.
         audioHandler.onWindowReady = { [weak self] data, sampleRate in
             guard let self else { return }
             Task { @MainActor in
-                if self.recognitionStats.isCriticallyBehind, self.recognitionStats.isInFlight {
-                    return
-                }
                 await self.recognitionQueue.enqueue(data: data, sampleRate: sampleRate) { data, sampleRate in
                     await self.performRecognition(data: data, sampleRate: sampleRate)
                 }
@@ -140,6 +141,7 @@ final class BirdDetectionViewModel: ObservableObject {
         fileAnalysisTask = nil
         Task { await recognitionQueue.cancel() }
         audioHandler.stop()
+        historyStore.flush()
         Task { await recognizer.stop() }
     }
 
@@ -147,6 +149,7 @@ final class BirdDetectionViewModel: ObservableObject {
         modelState = await recognizer.currentState()
         audioLevel = audioHandler.level
         meterStats = audioHandler.meterStats
+        recognitionStats.silentWindowsSkipped = audioHandler.silentWindowsSkipped
 
         switch modelState {
         case .stopped:
@@ -303,6 +306,23 @@ final class BirdDetectionViewModel: ObservableObject {
 
     func reconfigureSpectrogram() {
         audioHandler.reconfigureSpectrogram(settings: settings)
+    }
+
+    /// Restart capture so hop-size changes take effect; no-op when idle.
+    func applyDetectionPipelineSettings() {
+        guard isListening else { return }
+        Task {
+            audioHandler.stop()
+            await startAudioIfPossible()
+            await refreshRuntime()
+        }
+    }
+
+    func applySilenceGate() {
+        audioHandler.setSilenceGate(
+            enabled: settings.silenceSkipEnabled,
+            thresholdDB: settings.silenceSkipThresholdDB
+        )
     }
 
     func bindOpenMainWindow(_ handler: @escaping () -> Void) {
