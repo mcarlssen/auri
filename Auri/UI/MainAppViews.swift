@@ -162,6 +162,7 @@ enum ListenState: Equatable {
         }
     }
 
+    @MainActor
     static func current(viewModel: BirdDetectionViewModel) -> ListenState {
         if case .failed(let message) = viewModel.modelState {
             return .modelFailed(message)
