@@ -94,6 +94,10 @@ final class BirdDetectionViewModel: ObservableObject {
     private var runtimeTask: Task<Void, Never>?
     private var fileAnalysisTask: Task<Void, Never>?
     private var hasBootstrapped = false
+    /// A species not on the regional eBird list (rarity `.unusual`) is hidden
+    /// unless it scores at least this high — a very confident hit still surfaces
+    /// as a possible rare sighting rather than being filtered outright.
+    static let unusualSpeciesConfidenceFloor = 0.75
     private var debugCaptureEnabled = false
     private let maxModelOutputEntries = 150
 
@@ -563,10 +567,10 @@ final class BirdDetectionViewModel: ObservableObject {
         if settings.locationFilteringEnabled,
            let rarity,
            rarity.level == .unusual,
-           response.confidence < settings.confidenceThreshold + 0.1 {
+           response.confidence < Self.unusualSpeciesConfidenceFloor {
             RecognitionLogger.log(
-                "suppressed unusual species below boosted threshold: \(response.bird) " +
-                "conf=\(String(format: "%.3f", response.confidence))"
+                "suppressed unusual (non-local) species below \(Int(Self.unusualSpeciesConfidenceFloor * 100))% floor: " +
+                "\(response.bird) conf=\(String(format: "%.3f", response.confidence))"
             )
             return false
         }
