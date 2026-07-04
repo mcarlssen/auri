@@ -19,3 +19,6 @@ Tools/CoreMLSpike/.build/
 Auri/Resources/BirdNet/audio-model-fp16.mlpackage
 .env
 **/.env
+
+# CodeGraph local index (rebuilt per environment by the session-start hook)
+.codegraph/
