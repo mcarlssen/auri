@@ -76,6 +76,51 @@ extension BirdDetection: Codable {
     }
 }
 
+/// A run of consecutive detections of the same species (and source) collapsed
+/// into a single feed entry. A burst of 40 hits for one bird becomes one group
+/// carrying all 40 events rather than 40 separate cards.
+struct DetectionGroup: Identifiable {
+    /// Members newest-first; guaranteed non-empty.
+    let detections: [BirdDetection]
+
+    var id: UUID { representative.id }
+
+    /// The newest member — drives name, rarity, and the displayed timestamp.
+    var representative: BirdDetection { detections[0] }
+
+    var count: Int { detections.count }
+
+    /// Strongest hit in the run — the most meaningful confidence to surface.
+    var peakConfidence: Double {
+        detections.map(\.confidence).max() ?? representative.confidence
+    }
+
+    /// The member to submit to eBird — the highest-confidence observation.
+    var strongest: BirdDetection {
+        detections.max(by: { $0.confidence < $1.confidence }) ?? representative
+    }
+
+    var firstSeen: Date { detections.map(\.timestamp).min() ?? representative.timestamp }
+    var lastSeen: Date { detections.map(\.timestamp).max() ?? representative.timestamp }
+
+    /// Collapse consecutive runs of the same species+source. Non-adjacent runs
+    /// stay separate so chronology is preserved (A, B, A → three groups).
+    static func grouped(_ detections: [BirdDetection]) -> [DetectionGroup] {
+        var groups: [DetectionGroup] = []
+        var run: [BirdDetection] = []
+        for detection in detections {
+            if let last = run.last, last.birdId == detection.birdId, last.source == detection.source {
+                run.append(detection)
+            } else {
+                if !run.isEmpty { groups.append(DetectionGroup(detections: run)) }
+                run = [detection]
+            }
+        }
+        if !run.isEmpty { groups.append(DetectionGroup(detections: run)) }
+        return groups
+    }
+}
+
 struct RecognitionResponse: Decodable {
     let bird: String
     let id: Int

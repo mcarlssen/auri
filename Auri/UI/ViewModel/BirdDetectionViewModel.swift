@@ -346,6 +346,18 @@ final class BirdDetectionViewModel: ObservableObject {
         }
     }
 
+    /// Remove every detection in a grouped feed entry at once.
+    func deleteDetections(in group: DetectionGroup) {
+        let ids = Set(group.detections.map(\.id))
+        detections.removeAll { ids.contains($0.id) }
+        for id in ids {
+            historyStore.remove(id: id)
+        }
+        if let selected = selectedDetection?.id, ids.contains(selected) {
+            selectedDetection = nil
+        }
+    }
+
     func clearRecentDetections() {
         detections.removeAll()
         settings.recentClearedAt = Date()

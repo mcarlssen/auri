@@ -29,6 +29,7 @@ struct SpectrogramView: View {
         SpectrogramImageHost(snapshot: snapshot)
             .frame(maxWidth: .infinity)
             .frame(height: 236)
+            .clipped()
             .overlay { markerOverlay }
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay {
@@ -136,7 +137,14 @@ private struct SpectrogramImageHost: NSViewRepresentable {
         view.imageScaling = .scaleAxesIndependently
         view.imageAlignment = .alignBottomRight
         view.wantsLayer = true
+        view.layer?.masksToBounds = true
         view.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
+        // The image's pixel size is large; without lowering these priorities the
+        // view refuses to shrink to its SwiftUI frame and overflows the column.
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return view
     }
 

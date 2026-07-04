@@ -385,14 +385,14 @@ struct ListenView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(viewModel.detections) { detection in
+                        ForEach(DetectionGroup.grouped(viewModel.detections)) { group in
                             DetectionCardView(
-                                detection: detection,
-                                lifetimeCount: viewModel.historyStore.lifetimeCount(for: detection.birdId),
-                                isIgnored: viewModel.isIgnored(detection),
-                                onIgnore: { viewModel.ignore(detection: detection) },
-                                onDelete: { viewModel.deleteDetection(detection) },
-                                onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
+                                group: group,
+                                lifetimeCount: viewModel.historyStore.lifetimeCount(for: group.representative.birdId),
+                                isIgnored: viewModel.isIgnored(group.representative),
+                                onIgnore: { viewModel.ignore(detection: group.representative) },
+                                onDelete: { viewModel.deleteDetections(in: group) },
+                                onSubmit: { viewModel.submitToEBirdSheet(for: group.strongest) }
                             )
                         }
                     }
