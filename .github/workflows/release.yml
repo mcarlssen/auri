@@ -1,0 +1,122 @@
+# Builds Auri.app and publishes a GitHub Release on every merge to main.
+#
+# Signing is auto-detected from repository secrets:
+#   - No secrets            → ad-hoc signed build (right-click → Open, or approve
+#                             under System Settings → Privacy & Security on first launch)
+#   - MACOS_CERT_P12        → base64-encoded Developer ID Application .p12
+#     MACOS_CERT_PASSWORD   → password for the .p12
+#     APPLE_TEAM_ID         → 10-character team ID
+#   - NOTARY_APPLE_ID       → Apple ID email for notarytool (optional, enables notarization)
+#     NOTARY_PASSWORD       → app-specific password for that Apple ID
+#
+# Prerequisite: Auri/Resources/BirdNet/audio-model-fp16.mlpackage must be
+# committed to the repository (see scripts/setup-birdnet-model.sh) — the
+# workflow fails fast with a clear message if it is missing.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    env:
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Verify BirdNET model is present
+        run: |
+          if [ ! -d "Auri/Resources/BirdNet/audio-model-fp16.mlpackage" ]; then
+            echo "::error::Auri/Resources/BirdNet/audio-model-fp16.mlpackage is not in the repository."
+            echo "The Core ML model is a required bundle resource. Stage it locally with"
+            echo "scripts/setup-birdnet-model.sh, then commit and push it."
+            exit 1
+          fi
+
+      - name: Determine version
+        id: version
+        run: |
+          MARKETING=$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' Auri.xcodeproj/project.pbxproj | head -1)
+          MARKETING=${MARKETING:-1.0}
+          echo "marketing=${MARKETING}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${MARKETING}-b${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp bundle version
+        run: |
+          plutil -replace CFBundleVersion -string "${{ github.run_number }}" Auri/Resources/Info.plist
+          plutil -replace CFBundleShortVersionString -string "${{ steps.version.outputs.marketing }}" Auri/Resources/Info.plist
+
+      - name: Import Developer ID certificate
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p ci-keychain build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci-keychain build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci-keychain build.keychain
+          rm /tmp/cert.p12
+
+      - name: Build (Developer ID signed)
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          xcodebuild -project Auri.xcodeproj -scheme Auri -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
+            build
+
+      - name: Build (ad-hoc signed)
+        if: env.MACOS_CERT_P12 == ''
+        run: |
+          xcodebuild -project Auri.xcodeproj -scheme Auri -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package
+        run: |
+          ditto -c -k --keepParent "build/Build/Products/Release/Auri.app" "Auri-${{ steps.version.outputs.tag }}.zip"
+
+      - name: Notarize and staple
+        if: env.MACOS_CERT_P12 != '' && env.NOTARY_APPLE_ID != ''
+        run: |
+          xcrun notarytool submit "Auri-${{ steps.version.outputs.tag }}.zip" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "build/Build/Products/Release/Auri.app"
+          ditto -c -k --keepParent "build/Build/Products/Release/Auri.app" "Auri-${{ steps.version.outputs.tag }}.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Auri ${{ steps.version.outputs.marketing }} (build ${{ github.run_number }})
+          generate_release_notes: true
+          body: |
+            Automated build of `main` at ${{ github.sha }}.
+
+            ${{ env.MACOS_CERT_P12 == '' && 'This build is ad-hoc signed. On first launch, right-click Auri.app and choose Open (or approve it under System Settings → Privacy & Security).' || 'This build is Developer ID signed.' }}
+          files: Auri-${{ steps.version.outputs.tag }}.zip
