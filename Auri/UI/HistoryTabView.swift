@@ -1,29 +1,67 @@
+import AppKit
 import SwiftUI
+
+/// Time window for the Heard list: the current session, today, or all-time.
+enum HeardScope: String, CaseIterable, Identifiable {
+    case session
+    case today
+    case lifetime
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .session: return "This session"
+        case .today: return "Today"
+        case .lifetime: return "Lifetime"
+        }
+    }
+}
 
 struct HistoryTabView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject private var historyStore: RecognitionHistoryStore
+    @ObservedObject private var settings: AppSettings
 
     @State private var searchText = ""
     @State private var sortOption: HistorySortOption = .date
+    @AppStorage("heardScope") private var scope: HeardScope = .session
+    @State private var copyFeedback = ""
 
     init(viewModel: BirdDetectionViewModel) {
         self.viewModel = viewModel
         self.historyStore = viewModel.historyStore
+        self.settings = viewModel.settings
+    }
+
+    private var sinceDate: Date? {
+        switch scope {
+        case .session: return settings.recentClearedAt
+        case .today: return Calendar.current.startOfDay(for: Date())
+        case .lifetime: return nil
+        }
     }
 
     private var summaries: [SpeciesHistorySummary] {
-        historyStore.speciesSummaries(search: searchText, sort: sortOption)
+        historyStore.speciesSummaries(search: searchText, sort: sortOption, since: sinceDate)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Recognition history")
+            Text("Heard")
                 .font(.title2.bold())
 
-            Text("Persistent log of all detections across sessions. Search and sort by species.")
+            Text("Unique species you've identified, grouped and counted. Switch scope to see this session, today, or your all-time list.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Picker("Scope", selection: $scope) {
+                ForEach(HeardScope.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
             HStack(spacing: 12) {
                 TextField("Search species", text: $searchText)
@@ -39,18 +77,31 @@ struct HistoryTabView: View {
 
                 Spacer()
 
-                Text("\(historyStore.entries.count) total")
+                Text("^[\(summaries.count) species](inflect: true)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Button("Clear history", role: .destructive) {
-                    historyStore.clear()
+                Button("Copy list") {
+                    copySpeciesList()
                 }
-                .disabled(historyStore.entries.isEmpty)
+                .disabled(summaries.isEmpty)
+
+                if scope == .lifetime {
+                    Button("Clear history", role: .destructive) {
+                        historyStore.clear()
+                    }
+                    .disabled(historyStore.entries.isEmpty)
+                }
+            }
+
+            if !copyFeedback.isEmpty {
+                Text(copyFeedback)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if summaries.isEmpty {
-                Text(searchText.isEmpty ? "No recognitions recorded yet." : "No species match your search.")
+                Text(emptyMessage)
                     .foregroundStyle(.secondary)
                 Spacer()
                 EBirdAttributionView()
@@ -73,6 +124,22 @@ struct HistoryTabView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var emptyMessage: String {
+        if !searchText.isEmpty { return "No species match your search." }
+        switch scope {
+        case .session: return "No species heard this session yet."
+        case .today: return "No species heard today yet."
+        case .lifetime: return "No recognitions recorded yet."
+        }
+    }
+
+    private func copySpeciesList() {
+        let lines = summaries.map { "\($0.birdName) (\($0.scientificName))" }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+        copyFeedback = "\(lines.count) species copied to clipboard."
     }
 }
 

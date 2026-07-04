@@ -11,16 +11,12 @@ struct MainWindowView: View {
                 .tag(BirdDetectionViewModel.MainWindowTab.monitor)
 
             HistoryTabView(viewModel: viewModel)
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tabItem { Label("Heard", systemImage: "bird") }
                 .tag(BirdDetectionViewModel.MainWindowTab.history)
 
             OfflineAnalysisTabView(viewModel: viewModel)
                 .tabItem { Label("Analyze File", systemImage: "doc.text.magnifyingglass") }
                 .tag(BirdDetectionViewModel.MainWindowTab.offline)
-
-            EBirdBatchView(viewModel: viewModel)
-                .tabItem { Label("Session List", systemImage: "bird") }
-                .tag(BirdDetectionViewModel.MainWindowTab.eBird)
 
             SettingsView(viewModel: viewModel, embedded: true)
                 .tabItem { Label("Settings", systemImage: "gearshape") }

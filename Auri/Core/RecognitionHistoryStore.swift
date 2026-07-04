@@ -96,9 +96,9 @@ final class RecognitionHistoryStore: ObservableObject {
             .sorted { $0.timestamp > $1.timestamp }
     }
 
-    func speciesSummaries(search: String, sort: HistorySortOption) -> [SpeciesHistorySummary] {
+    func speciesSummaries(search: String, sort: HistorySortOption, since: Date? = nil) -> [SpeciesHistorySummary] {
         var grouped: [Int: [BirdDetection]] = [:]
-        for entry in entries {
+        for entry in entries where since == nil || entry.timestamp >= since! {
             grouped[entry.birdId, default: []].append(entry)
         }
 
