@@ -136,58 +136,6 @@ struct AudioStatsView: View {
     }
 }
 
-struct RuntimeControlsView: View {
-    @ObservedObject var viewModel: BirdDetectionViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            modelRow
-            listeningRow
-        }
-    }
-
-    private var modelRow: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(modelIndicatorColor)
-                .frame(width: 8, height: 8)
-            Text(viewModel.modelStatusLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            if case .failed = viewModel.modelState {
-                Button("Reload Model") { viewModel.reloadModel() }
-            }
-        }
-    }
-
-    private var listeningRow: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(viewModel.isListening ? .green : .red)
-                .frame(width: 8, height: 8)
-            Text(viewModel.listeningStatusLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            if viewModel.canStopListening {
-                Button("Stop Listening") { viewModel.stopListening() }
-            } else if viewModel.canStartListening {
-                Button("Start Listening") { viewModel.startListening() }
-            }
-        }
-    }
-
-    private var modelIndicatorColor: Color {
-        switch viewModel.modelState {
-        case .ready: return .green
-        case .loading: return .yellow
-        case .stopped: return .secondary
-        case .failed: return .red
-        }
-    }
-}
-
 enum ListenState: Equatable {
     case listening
     case paused
@@ -298,7 +246,7 @@ struct ListenView: View {
         VStack(alignment: .leading, spacing: 12) {
             ListenStatusPill(viewModel: viewModel)
 
-            SpectrogramView(snapshot: audioHandler.spectrogram)
+            SpectrogramView(snapshot: audioHandler.spectrogram, markers: spectrogramMarkers)
                 .onAppear { audioHandler.setSpectrogramVisible(true) }
                 .onDisappear { audioHandler.setSpectrogramVisible(false) }
 
@@ -331,6 +279,14 @@ struct ListenView: View {
                 disclosureLabel("Advanced stats", summary: statsSummary)
             }
         }
+    }
+
+    private var spectrogramMarkers: [SpectrogramView.Marker] {
+        let history = TimeInterval(audioHandler.spectrogram?.historySeconds ?? SpectrogramEngine.historySeconds)
+        let cutoff = Date().addingTimeInterval(-history)
+        return viewModel.detections
+            .filter { $0.source == .live && $0.timestamp >= cutoff }
+            .map { SpectrogramView.Marker(id: $0.id, timestamp: $0.timestamp, label: $0.birdName) }
     }
 
     private func disclosureLabel(_ title: String, summary: String) -> some View {
@@ -505,24 +461,6 @@ extension BirdNetCoreMLRecognizer.State {
     var isFailedState: Bool {
         if case .failed = self { return true }
         return false
-    }
-}
-
-extension BirdDetectionViewModel {
-    var modelStatusLabel: String {
-        switch modelState {
-        case .stopped: return "Model stopped"
-        case .loading: return "Loading model"
-        case .ready: return "Model ready"
-        case .failed: return "Model failed"
-        }
-    }
-
-    var listeningStatusLabel: String {
-        if isListening { return "Listening" }
-        if audioHandler.isPermissionDenied { return "Microphone access denied" }
-        if !audioHandler.permissionGranted { return "Microphone access required" }
-        return "Not listening"
     }
 }
 
