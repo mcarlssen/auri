@@ -186,6 +186,10 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    @Published var notifyNewSpeciesOnly: Bool {
+        didSet { save() }
+    }
+
     @Published var notificationSoundEnabled: Bool {
         didSet { save() }
     }
@@ -302,6 +306,7 @@ final class AppSettings: ObservableObject {
         locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
         eBirdApiKey = defaults.string(forKey: "eBirdApiKey") ?? ""
         notificationsEnabled = defaults.object(forKey: "notificationsEnabled") as? Bool ?? true
+        notifyNewSpeciesOnly = defaults.object(forKey: "notifyNewSpeciesOnly") as? Bool ?? true
         notificationSoundEnabled = defaults.object(forKey: "notificationSoundEnabled") as? Bool ?? true
         maxNotificationsPerHour = defaults.object(forKey: "maxNotificationsPerHour") as? Int ?? 30
         ignoredSpeciesIDs = Set(defaults.array(forKey: "ignoredSpeciesIDs") as? [Int] ?? [])
@@ -375,6 +380,7 @@ final class AppSettings: ObservableObject {
         defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")
         defaults.set(eBirdApiKey, forKey: "eBirdApiKey")
         defaults.set(notificationsEnabled, forKey: "notificationsEnabled")
+        defaults.set(notifyNewSpeciesOnly, forKey: "notifyNewSpeciesOnly")
         defaults.set(notificationSoundEnabled, forKey: "notificationSoundEnabled")
         defaults.set(maxNotificationsPerHour, forKey: "maxNotificationsPerHour")
         defaults.set(Array(ignoredSpeciesIDs), forKey: "ignoredSpeciesIDs")
