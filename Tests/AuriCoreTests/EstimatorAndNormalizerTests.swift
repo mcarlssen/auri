@@ -135,14 +135,18 @@ final class AudioWindowNormalizerTests: XCTestCase {
         XCTAssertEqual(samples, original)
     }
 
-    func testClipping_largeOutlierClampedToPositiveOne() {
+    func testPeakSafeScaling_outlierScaledToOneWithoutClipping() {
         var samples = [Float](repeating: 1e-6, count: 10_000)
         samples[5000] = 0.5
         // The overall rms is diluted by the 10,000-sample array (~0.005), well below
-        // targetRMS (0.025), so a gain of roughly 5x is applied. That gain would push the
-        // single 0.5 outlier to ~2.5, which must be hard-clipped down to exactly 1.0.
+        // targetRMS (0.025), so the RMS target alone would apply ~5x gain. That would
+        // push the single 0.5 outlier to ~2.5, so the peak-safe cap limits the applied
+        // gain to 1/peak = 2x, landing the peak at exactly 1.0 with no hard clipping.
         _ = AudioWindowNormalizer.applyAutoGain(to: &samples, enabled: true)
-        XCTAssertEqual(samples[5000], 1.0)
+        XCTAssertEqual(samples[5000], 1.0, accuracy: 1e-6)
+        // Waveform shape is preserved: the quiet samples scaled by the same 2x factor
+        // rather than being flattened by clipping.
+        XCTAssertEqual(samples[0], 2e-6, accuracy: 1e-9)
         for sample in samples {
             XCTAssertLessThanOrEqual(sample, 1.0)
             XCTAssertGreaterThanOrEqual(sample, -1.0)

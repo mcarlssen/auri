@@ -42,14 +42,24 @@ actor EBirdRegionalService {
             return RarityInfo(level: .unknown, regionLabel: nil, frequencyPercent: nil)
         }
 
+        // Without a loaded regional list there is nothing to compare against, so
+        // stay lenient (.unknown, never the elevated floor) rather than spend a
+        // taxonomy lookup that can't change the outcome. This is the guardrail for
+        // users with no key or a region that hasn't finished loading — they still
+        // get detections at the normal threshold.
+        guard !regionalSpeciesCodes.isEmpty else {
+            return RarityInfo(level: .unknown, regionLabel: regionLabel, frequencyPercent: nil)
+        }
+
+        // A code we can't resolve also stays .unknown so an API hiccup never
+        // silently suppresses a real detection.
         guard let speciesCode = await speciesCode(for: scientificName, apiKey: trimmedKey) else {
             return RarityInfo(level: .unknown, regionLabel: regionLabel, frequencyPercent: nil)
         }
 
-        if regionalSpeciesCodes.isEmpty {
-            return RarityInfo(level: .unknown, regionLabel: regionLabel, frequencyPercent: nil)
-        }
-
+        // With a list loaded and the code resolved, the species is either expected
+        // (in the regional list, passes at the normal threshold) or unusual
+        // (resolvable but absent from it → held to the elevated confidence floor).
         if regionalSpeciesCodes.contains(speciesCode) {
             return RarityInfo(level: .expected, regionLabel: regionLabel, frequencyPercent: nil)
         }

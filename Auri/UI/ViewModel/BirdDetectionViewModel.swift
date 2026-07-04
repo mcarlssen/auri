@@ -90,6 +90,12 @@ final class BirdDetectionViewModel: ObservableObject {
     private var fileAnalysisCooldown = TimelineSpeciesCooldown()
     private var rateLimiter = NotificationRateLimiter()
     private var confidenceEstimator = ConfidenceRollingEstimator()
+    /// Temporal corroboration for LIVE detections: a species must clear threshold
+    /// in enough overlapping windows before it qualifies. Reset when listening
+    /// (re)starts and when the window cadence changes.
+    private var corroborator = DetectionCorroborator(
+        horizonSeconds: BirdDetectionViewModel.corroborationHorizonSeconds
+    )
     private let recognitionQueue = RecognitionSerialQueue()
     private var runtimeTask: Task<Void, Never>?
     private var fileAnalysisTask: Task<Void, Never>?
@@ -98,6 +104,10 @@ final class BirdDetectionViewModel: ObservableObject {
     /// unless it scores at least this high — a very confident hit still surfaces
     /// as a possible rare sighting rather than being filtered outright.
     static let unusualSpeciesConfidenceFloor = 0.75
+    /// Corroborating windows must fall within one BirdNET window length of each
+    /// other so only overlapping looks at the same ~3 s of audio combine.
+    private static let corroborationHorizonSeconds =
+        Double(BirdNetCoreMLRecognizer.windowSamples) / Double(BirdNetCoreMLRecognizer.modelSampleRate)
     private var debugCaptureEnabled = false
     private let maxModelOutputEntries = 150
 
@@ -221,6 +231,7 @@ final class BirdDetectionViewModel: ObservableObject {
         Task {
             await recognitionQueue.resetMetrics()
             confidenceEstimator.reset()
+            corroborator.reset()
             recognitionStats = RecognitionPipelineStats()
             await audioHandler.requestPermission()
             await startAudioIfPossible()
@@ -231,6 +242,7 @@ final class BirdDetectionViewModel: ObservableObject {
     func stopListening() {
         settings.recordingEnabled = false
         audioHandler.stop()
+        corroborator.reset()
         Task { await refreshRuntime() }
     }
 
@@ -321,6 +333,9 @@ final class BirdDetectionViewModel: ObservableObject {
         guard isListening else { return }
         Task {
             audioHandler.stop()
+            // The window cadence changed, so the corroboration requirement and any
+            // in-flight window observations no longer line up; start fresh.
+            corroborator.reset()
             await startAudioIfPossible()
             await refreshRuntime()
         }
@@ -596,15 +611,37 @@ final class BirdDetectionViewModel: ObservableObject {
             return false
         }
 
+        // LIVE audio: require the species to clear threshold across multiple
+        // overlapping windows before it qualifies, which drops isolated
+        // single-window false positives. With overlap off there is only one look
+        // per window, so the requirement collapses to 1 (pass-through) and nothing
+        // is suppressed. The .file path uses its own timeline cooldown, so leave
+        // it — and its confidence — untouched.
+        var effectiveConfidence = response.confidence
+        if source == .live {
+            let hopSamples = settings.detectionOverlap.hopSamples(
+                windowSamples: BirdNetCoreMLRecognizer.windowSamples
+            )
+            let requiredWindows = hopSamples < BirdNetCoreMLRecognizer.windowSamples ? 2 : 1
+            guard let corroboratedConfidence = corroborator.corroborate(
+                speciesId: response.id,
+                confidence: response.confidence,
+                required: requiredWindows
+            ) else {
+                return false
+            }
+            effectiveConfidence = corroboratedConfidence
+        }
+
         let rarity = await lookupRarity(scientificName: response.scientificName)
 
         if settings.locationFilteringEnabled,
            let rarity,
            rarity.level == .unusual,
-           response.confidence < Self.unusualSpeciesConfidenceFloor {
+           effectiveConfidence < Self.unusualSpeciesConfidenceFloor {
             RecognitionLogger.log(
                 "suppressed unusual (non-local) species below \(Int(Self.unusualSpeciesConfidenceFloor * 100))% floor: " +
-                "\(response.bird) conf=\(String(format: "%.3f", response.confidence))"
+                "\(response.bird) conf=\(String(format: "%.3f", effectiveConfidence))"
             )
             return false
         }
@@ -619,7 +656,7 @@ final class BirdDetectionViewModel: ObservableObject {
         let detection = BirdDetection(
             birdName: response.bird,
             scientificName: response.scientificName,
-            confidence: response.confidence,
+            confidence: effectiveConfidence,
             birdId: response.id,
             inferenceMs: response.timeMs,
             source: source,

@@ -14,6 +14,7 @@ let package = Package(
                 "Core/Settings.swift",
                 "Core/DotEnv.swift",
                 "Core/Cooldown.swift",
+                "Core/DetectionCorroborator.swift",
                 "Core/ConfidenceRollingEstimator.swift",
                 "Core/IgnoreList.swift",
                 "Core/RecognitionHistoryStore.swift",

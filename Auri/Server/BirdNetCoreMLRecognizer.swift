@@ -39,6 +39,10 @@ actor BirdNetCoreMLRecognizer {
     private var inputFeatureName: String?
     private var speciesLabels: [SpeciesLabel] = []
     private var speciesCatalogEntries: [Bird] = []
+    // Reused across recognize() calls: the actor is serial, so once a prediction
+    // returns the input array is free to be overwritten for the next window,
+    // sparing a fresh windowSamples-float allocation every call.
+    private var reusableInputArray: MLMultiArray?
 
     func currentState() -> State {
         state
@@ -108,6 +112,7 @@ actor BirdNetCoreMLRecognizer {
         inputFeatureName = nil
         speciesLabels = []
         speciesCatalogEntries = []
+        reusableInputArray = nil
         state = .stopped
     }
 
@@ -151,7 +156,7 @@ actor BirdNetCoreMLRecognizer {
         // every window leaks its buffers until the pool is drained explicitly.
         // Extract plain Swift values before leaving the pool.
         let predictions: [(index: Int, score: Double)] = try autoreleasepool {
-            let provider = try Self.makeInputProvider(samples: samples, featureName: inputFeatureName)
+            let provider = try makeReusedInputProvider(samples: samples, featureName: inputFeatureName)
             let output = try model.prediction(from: provider)
             guard let outputName = output.featureNames.first,
                   let value = output.featureValue(for: outputName),
@@ -174,6 +179,27 @@ actor BirdNetCoreMLRecognizer {
             )
         }
         return RecognitionCallResult(detections: detections, inferenceMs: inferenceMs, autoGainDB: appliedAutoGainDB)
+    }
+
+    /// Hot-path variant of `makeInputProvider` that reuses a single cached input
+    /// array. Callers pass a window of exactly `windowSamples`, which fully
+    /// overwrites the array's backing store before it is handed to the model.
+    private func makeReusedInputProvider(samples: [Float], featureName: String) throws -> MLFeatureProvider {
+        guard samples.count >= Self.windowSamples else {
+            throw RecognizerError.invalidPCM
+        }
+        let array: MLMultiArray
+        if let cached = reusableInputArray {
+            array = cached
+        } else {
+            array = try MLMultiArray(shape: [1, NSNumber(value: Self.windowSamples)], dataType: .float32)
+            reusableInputArray = array
+        }
+        samples.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            memcpy(array.dataPointer, base, Self.windowSamples * MemoryLayout<Float>.size)
+        }
+        return try MLDictionaryFeatureProvider(dictionary: [featureName: MLFeatureValue(multiArray: array)])
     }
 
     private enum RecognizerError: Error, LocalizedError {
@@ -311,16 +337,67 @@ actor BirdNetCoreMLRecognizer {
 
         let ratio = Double(targetRate) / Double(sourceRate)
         let targetCount = max(1, Int((Double(samples.count) * ratio).rounded()))
-        var output = [Float](repeating: 0, count: targetCount)
 
+        // Downsampling folds energy above the target's Nyquist frequency back into
+        // the analyzed band, so band-limit the signal before decimating. Upsampling
+        // and equal rates introduce no such aliasing, so they interpolate directly.
+        let source = targetRate < sourceRate
+            ? lowPassFiltered(samples, cutoff: 0.5 * Double(targetRate), sampleRate: Double(sourceRate))
+            : samples
+
+        var output = [Float](repeating: 0, count: targetCount)
         for index in 0..<targetCount {
             let sourcePosition = Double(index) / ratio
             let left = Int(sourcePosition.rounded(.down))
-            let right = min(left + 1, samples.count - 1)
+            let right = min(left + 1, source.count - 1)
             let fraction = Float(sourcePosition - Double(left))
-            output[index] = samples[left] * (1 - fraction) + samples[right] * fraction
+            output[index] = source[left] * (1 - fraction) + source[right] * fraction
         }
 
+        return output
+    }
+
+    /// Windowed-sinc low-pass applied before decimation so content above the
+    /// target Nyquist frequency can't alias into the band BirdNET analyzes. The
+    /// kernel is Hann-windowed and normalized to unit DC gain, and the signal is
+    /// edge-clamped rather than zero-padded, so a constant input passes through
+    /// unchanged. `cutoff` and `sampleRate` are in Hz.
+    private static func lowPassFiltered(_ samples: [Float], cutoff: Double, sampleRate: Double) -> [Float] {
+        // Normalized cutoff in cycles/sample, kept strictly below Nyquist.
+        let normalizedCutoff = min(0.499, cutoff / sampleRate)
+        // Longer kernels for steeper downsampling (sharper transition), bounded to
+        // keep the direct convolution's cost reasonable.
+        let decimation = sampleRate / (2 * cutoff)
+        let halfTaps = min(64, max(8, Int((4 * decimation).rounded())))
+        let tapCount = 2 * halfTaps + 1
+
+        var kernel = [Float](repeating: 0, count: tapCount)
+        var gain: Float = 0
+        for tap in 0..<tapCount {
+            let offset = Double(tap - halfTaps)
+            let arg = 2 * normalizedCutoff * offset
+            let sinc = offset == 0 ? 1.0 : sin(Double.pi * arg) / (Double.pi * arg)
+            let window = 0.5 - 0.5 * cos(2 * Double.pi * Double(tap) / Double(tapCount - 1))
+            let value = Float(sinc * window)
+            kernel[tap] = value
+            gain += value
+        }
+        // Normalize to unit DC gain so the filter neither amplifies nor attenuates
+        // steady signals.
+        for tap in 0..<tapCount { kernel[tap] /= gain }
+
+        let count = samples.count
+        var output = [Float](repeating: 0, count: count)
+        for index in 0..<count {
+            var accumulator: Float = 0
+            for tap in 0..<tapCount {
+                // Clamp out-of-range taps to the signal's edges (replication) so
+                // the boundaries aren't dragged toward zero.
+                let sourceIndex = min(max(index + tap - halfTaps, 0), count - 1)
+                accumulator += samples[sourceIndex] * kernel[tap]
+            }
+            output[index] = accumulator
+        }
         return output
     }
 
