@@ -46,13 +46,12 @@ final class AudioHandler: ObservableObject {
     private var converter: AVAudioConverter?
     private var converterInputKey: ConverterInputKey?
     private var targetFormat: AVAudioFormat?
-    private var bufferAccumulator = Data()
     private static let birdNetWindowSampleCount = BirdNetCoreMLRecognizer.windowSamples
-    private static let birdNetWindowByteCount = birdNetWindowSampleCount * MemoryLayout<Float>.size
-    private var hopByteCount = (birdNetWindowSampleCount / 2) * MemoryLayout<Float>.size
-    private var silenceGateEnabled = false
-    private var silenceGateThresholdLinear: Float = 0
-    private var silentSkipCount: UInt64 = 0
+    private var windowAccumulator = WindowAccumulator(
+        windowSampleCount: birdNetWindowSampleCount,
+        hopByteCount: (birdNetWindowSampleCount / 2) * MemoryLayout<Float>.size
+    )
+    private var lastPublishedSilentSkipCount: UInt64 = 0
     @Published private(set) var silentWindowsSkipped: UInt64 = 0
     private var bufferCount: UInt64 = 0
     private var lastBufferReceivedAt = Date.distantPast
@@ -189,8 +188,8 @@ final class AudioHandler: ObservableObject {
 
     @MainActor
     func setSilenceGate(enabled: Bool, thresholdDB: Double) {
-        silenceGateEnabled = enabled
-        silenceGateThresholdLinear = Float(pow(10, thresholdDB / 20))
+        windowAccumulator.silenceGateEnabled = enabled
+        windowAccumulator.silenceGateThresholdLinear = Float(pow(10, thresholdDB / 20))
     }
 
     /// Views displaying the spectrogram register here; the FFT/render pipeline
@@ -293,14 +292,15 @@ final class AudioHandler: ObservableObject {
         self.targetFormat = targetFormat
         converter = nil
         converterInputKey = nil
-        bufferAccumulator.removeAll(keepingCapacity: true)
+        windowAccumulator.reset(keepingCapacity: true)
         bufferCount = 0
         loggedPassthrough = false
-        hopByteCount = settings.detectionOverlap.hopSamples(
+        windowAccumulator.hopByteCount = settings.detectionOverlap.hopSamples(
             windowSamples: Self.birdNetWindowSampleCount
         ) * MemoryLayout<Float>.size
         setSilenceGate(enabled: settings.silenceSkipEnabled, thresholdDB: settings.silenceSkipThresholdDB)
-        silentSkipCount = 0
+        windowAccumulator.resetSilentCount()
+        lastPublishedSilentSkipCount = 0
         silentWindowsSkipped = 0
         AudioLog("Target format sr=\(Int(targetFormat.sampleRate)) ch=\(Int(targetFormat.channelCount))")
 
@@ -409,38 +409,17 @@ final class AudioHandler: ObservableObject {
         submitSpectrogramSamples(monoBuffer)
 
         let chunk = monoBuffer.withUnsafeBufferPointer { Data(buffer: $0) }
-        bufferAccumulator.append(chunk)
+        windowAccumulator.append(chunk)
 
-        let floatByteSize = MemoryLayout<Float>.size
-        let remainder = bufferAccumulator.count % floatByteSize
-        if remainder != 0 {
-            bufferAccumulator.removeLast(remainder)
+        while let window = windowAccumulator.nextWindow() {
+            onWindowReady?(window, BirdNetCoreMLRecognizer.modelSampleRate)
         }
 
-        while bufferAccumulator.count >= Self.birdNetWindowByteCount {
-            if silenceGateEnabled, windowPeakBelowGate() {
-                silentSkipCount &+= 1
-                let count = silentSkipCount
-                Task { @MainActor in self.silentWindowsSkipped = count }
-                bufferAccumulator.removeFirst(hopByteCount)
-                continue
-            }
-            let window = bufferAccumulator.prefix(Self.birdNetWindowByteCount)
-            onWindowReady?(Data(window), BirdNetCoreMLRecognizer.modelSampleRate)
-            bufferAccumulator.removeFirst(hopByteCount)
+        let skipped = windowAccumulator.silentWindowsSkipped
+        if skipped != lastPublishedSilentSkipCount {
+            lastPublishedSilentSkipCount = skipped
+            Task { @MainActor in self.silentWindowsSkipped = skipped }
         }
-    }
-
-    /// True when the next window's peak magnitude is below the silence gate,
-    /// meaning inference would be spent on inaudible audio.
-    private func windowPeakBelowGate() -> Bool {
-        var peak: Float = 0
-        bufferAccumulator.withUnsafeBytes { raw in
-            let floats = raw.bindMemory(to: Float.self)
-            guard let base = floats.baseAddress else { return }
-            vDSP_maxmgv(base, 1, &peak, vDSP_Length(Self.birdNetWindowSampleCount))
-        }
-        return peak < silenceGateThresholdLinear
     }
 
     private func applyInputGain(to samples: inout [Float]) {

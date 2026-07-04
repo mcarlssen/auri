@@ -32,6 +32,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run tests
+        run: swift test
+
       - name: Build (ad-hoc signed)
         run: |
           xcodebuild -project Auri.xcodeproj -scheme Auri -configuration Release \
