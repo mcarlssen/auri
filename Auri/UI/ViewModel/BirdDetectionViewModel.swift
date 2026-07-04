@@ -63,6 +63,9 @@ final class BirdDetectionViewModel: ObservableObject {
     @Published private(set) var recognitionStats = RecognitionPipelineStats()
     @Published private(set) var fileAnalysisState: FileAnalysisState = .idle
     @Published private(set) var regionalLabel: String?
+    /// Raw per-window model output for the Debug accordion. Only populated while
+    /// debug capture is enabled (the accordion is open); newest first.
+    @Published private(set) var modelOutputLog: [ModelOutputEntry] = []
     @Published var showingEBirdForm = false
     @Published var selectedDetection: BirdDetection?
     @Published var selectedTab: MainWindowTab = .monitor
@@ -91,6 +94,8 @@ final class BirdDetectionViewModel: ObservableObject {
     private var runtimeTask: Task<Void, Never>?
     private var fileAnalysisTask: Task<Void, Never>?
     private var hasBootstrapped = false
+    private var debugCaptureEnabled = false
+    private let maxModelOutputEntries = 150
 
     init() {
         Task { await bootstrapIfNeeded() }
@@ -364,6 +369,41 @@ final class BirdDetectionViewModel: ObservableObject {
         selectedDetection = nil
     }
 
+    /// The Debug accordion toggles live model-output capture on/off so there is
+    /// no per-window overhead while it is closed. Clears the log when disabled.
+    func setDebugCaptureEnabled(_ enabled: Bool) {
+        guard debugCaptureEnabled != enabled else { return }
+        debugCaptureEnabled = enabled
+        if !enabled {
+            modelOutputLog.removeAll()
+        }
+    }
+
+    func clearModelOutputLog() {
+        modelOutputLog.removeAll()
+    }
+
+    /// Record one window's raw model scores (top species, pre-threshold) so the
+    /// Debug accordion can show what is firing below the confidence threshold.
+    private func captureModelOutput(_ responses: [RecognitionResponse]) {
+        guard !responses.isEmpty else { return }
+        let threshold = settings.confidenceThreshold
+        let now = Date()
+        let entries = responses.map { response in
+            ModelOutputEntry(
+                birdName: response.bird,
+                scientificName: response.scientificName,
+                confidence: response.confidence,
+                threshold: threshold,
+                timestamp: now
+            )
+        }
+        modelOutputLog.insert(contentsOf: entries, at: 0)
+        if modelOutputLog.count > maxModelOutputEntries {
+            modelOutputLog = Array(modelOutputLog.prefix(maxModelOutputEntries))
+        }
+    }
+
     var sessionSpecies: [SessionSpeciesSummary] {
         historyStore.uniqueSpecies(since: settings.recentClearedAt)
     }
@@ -470,6 +510,10 @@ final class BirdDetectionViewModel: ObservableObject {
 
             if result.detections.isEmpty || topConfidence < settings.confidenceThreshold {
                 recognitionStats.belowThresholdCount += 1
+            }
+
+            if debugCaptureEnabled, source == .live {
+                captureModelOutput(result.detections)
             }
 
             var recordedAny = false

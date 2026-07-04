@@ -223,6 +223,7 @@ struct ListenView: View {
     @ObservedObject private var settings: AppSettings
     @AppStorage("listenTuningExpanded") private var tuningExpanded = false
     @AppStorage("listenStatsExpanded") private var statsExpanded = false
+    @AppStorage("listenDebugExpanded") private var debugExpanded = false
 
     init(viewModel: BirdDetectionViewModel) {
         self.viewModel = viewModel
@@ -279,7 +280,84 @@ struct ListenView: View {
             } label: {
                 disclosureLabel("Advanced stats", summary: statsSummary)
             }
+
+            DisclosureGroup(isExpanded: $debugExpanded) {
+                debugModelOutput
+                    .padding(.top, 8)
+            } label: {
+                disclosureLabel("Debug", summary: debugSummary)
+            }
+            .onChange(of: debugExpanded) { _, expanded in
+                viewModel.setDebugCaptureEnabled(expanded)
+            }
+            .onAppear { viewModel.setDebugCaptureEnabled(debugExpanded) }
+            .onDisappear { viewModel.setDebugCaptureEnabled(false) }
         }
+    }
+
+    /// Live raw model output: every species the model scores each window,
+    /// including those below the confidence threshold. Populated only while this
+    /// accordion is open (capture is gated on `debugExpanded`).
+    private var debugModelOutput: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Live model output")
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 8)
+                if !viewModel.modelOutputLog.isEmpty {
+                    Button("Clear") { viewModel.clearModelOutputLog() }
+                        .font(.caption)
+                        .controlSize(.small)
+                }
+            }
+
+            Text("Top species scored each window, including those below your \(Int(settings.confidenceThreshold * 100))% threshold. Use this to judge whether to adjust it.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if viewModel.modelOutputLog.isEmpty {
+                Text(viewModel.isListening ? "Waiting for model output…" : "Start listening to see model output.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 3) {
+                        ForEach(viewModel.modelOutputLog) { entry in
+                            debugRow(entry)
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+    }
+
+    private func debugRow(_ entry: ModelOutputEntry) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: entry.passedThreshold ? "checkmark.circle.fill" : "circle.dotted")
+                .font(.caption2)
+                .foregroundStyle(entry.passedThreshold ? Color.green : Color.secondary)
+            Text(entry.birdName)
+                .font(.caption)
+                .foregroundStyle(entry.passedThreshold ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 6)
+            Text(String(format: "%.1f%%", entry.confidence * 100))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(entry.passedThreshold ? .primary : .secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            String(
+                format: "%@, %.1f percent, %@ threshold",
+                entry.birdName,
+                entry.confidence * 100,
+                entry.passedThreshold ? "above" : "below"
+            )
+        )
     }
 
     private var spectrogramMarkers: [SpectrogramView.Marker] {
@@ -317,6 +395,15 @@ struct ListenView: View {
             parts.append("silent \(stats.silentWindowsSkipped)")
         }
         return parts.joined(separator: " · ")
+    }
+
+    private var debugSummary: String {
+        let log = viewModel.modelOutputLog
+        guard !log.isEmpty else {
+            return debugExpanded ? (viewModel.isListening ? "capturing…" : "idle") : "off"
+        }
+        let passed = log.filter(\.passedThreshold).count
+        return "\(log.count) rows · \(passed) ≥ threshold"
     }
 
     private var levelMeter: some View {
