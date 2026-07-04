@@ -1,60 +1,75 @@
 import CoreLocation
 import Foundation
 
+private func RegionLog(_ message: @autoclosure () -> String) {
+    RecognitionLogger.log(message(), category: "Location")
+}
+
 /// Uses the eBird API to determine whether a species is expected at the user's location.
 /// Requires a free API key from https://ebird.org/api/keygen
 actor EBirdRegionalService {
     static let shared = EBirdRegionalService()
 
-    private var regionalSpeciesCodes: Set<String> = []
+    /// A snapshot of the current regional data, handed to the main actor so
+    /// detections and the live model-output feed can be range-filtered synchronously.
+    struct RegionalSnapshot: Sendable {
+        let regionLabel: String?
+        /// Lowercased scientific names expected in the current region.
+        let inRegionScientificNames: Set<String>
+        /// Lowercased scientific names known to the eBird taxonomy. A name absent
+        /// here can't be judged in/out of region (e.g. a BirdNET label that doesn't
+        /// map to an eBird species), so callers must not filter it.
+        let knownScientificNames: Set<String>
+    }
+
     private var regionLabel: String?
     private var lastRefreshLocation: CLLocation?
     private var sciNameToCode: [String: String] = [:]
 
+    /// Full eBird taxonomy, loaded once (it is region-independent): maps species
+    /// code → lowercased scientific name, alongside the set of all scientific names.
+    private var taxonomyCodeToScientific: [String: String] = [:]
+    private var taxonomyScientificNames: Set<String> = []
+
+    /// Lowercased scientific names expected in the current region, derived by
+    /// intersecting the regional species-code list with the taxonomy.
+    private var regionalScientificNames: Set<String> = []
+
     func currentRegionLabel() -> String? {
         regionLabel
+    }
+
+    func regionalSnapshot() -> RegionalSnapshot {
+        RegionalSnapshot(
+            regionLabel: regionLabel,
+            inRegionScientificNames: regionalScientificNames,
+            knownScientificNames: taxonomyScientificNames
+        )
     }
 
     func refreshIfNeeded(location: CLLocation, apiKey: String) async {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { return }
 
-        if let last = lastRefreshLocation, last.distance(from: location) < 5_000, !regionalSpeciesCodes.isEmpty {
+        if let last = lastRefreshLocation, last.distance(from: location) < 5_000, !regionalScientificNames.isEmpty {
             return
         }
 
         guard let regionCode = await nearestRegionCode(location: location, apiKey: trimmedKey) else {
+            RegionLog("could not resolve region for location; skipping refresh")
             return
         }
 
         guard let speciesCodes = await fetchRegionalSpecies(regionCode: regionCode, apiKey: trimmedKey) else {
+            RegionLog("region \(regionCode): failed to fetch species list")
             return
         }
 
-        regionalSpeciesCodes = Set(speciesCodes)
+        await loadTaxonomyIfNeeded(apiKey: trimmedKey)
+        regionalScientificNames = Set(speciesCodes.compactMap { taxonomyCodeToScientific[$0] })
         regionLabel = regionCode
         lastRefreshLocation = location
-    }
-
-    func rarity(for scientificName: String, apiKey: String) async -> RarityInfo {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty else {
-            return RarityInfo(level: .unknown, regionLabel: nil, frequencyPercent: nil)
-        }
-
-        guard let speciesCode = await speciesCode(for: scientificName, apiKey: trimmedKey) else {
-            return RarityInfo(level: .unknown, regionLabel: regionLabel, frequencyPercent: nil)
-        }
-
-        if regionalSpeciesCodes.isEmpty {
-            return RarityInfo(level: .unknown, regionLabel: regionLabel, frequencyPercent: nil)
-        }
-
-        if regionalSpeciesCodes.contains(speciesCode) {
-            return RarityInfo(level: .expected, regionLabel: regionLabel, frequencyPercent: nil)
-        }
-
-        return RarityInfo(level: .unusual, regionLabel: regionLabel, frequencyPercent: nil)
+        RegionLog("region \(regionCode): \(speciesCodes.count) species codes, \(regionalScientificNames.count) matched to taxonomy")
     }
 
     /// Public resolver for the eBird 6-letter species code, used to link to a
@@ -63,6 +78,43 @@ actor EBirdRegionalService {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else { return nil }
         return await speciesCode(for: scientificName, apiKey: trimmedKey)
+    }
+
+    /// Fetches the full eBird species taxonomy once and caches the code→scientific
+    /// mapping. The taxonomy is region-independent, so this runs at most once per
+    /// session; later region changes reuse it.
+    private func loadTaxonomyIfNeeded(apiKey: String) async {
+        guard taxonomyScientificNames.isEmpty else { return }
+
+        var components = URLComponents(string: "https://api.ebird.org/v2/ref/taxonomy/ebird")!
+        components.queryItems = [
+            URLQueryItem(name: "fmt", value: "json"),
+            URLQueryItem(name: "cat", value: "species"),
+        ]
+        guard let url = components.url else { return }
+
+        guard let data = await fetch(url: url, apiKey: apiKey),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            RegionLog("failed to load eBird taxonomy")
+            return
+        }
+
+        var codeToScientific: [String: String] = [:]
+        codeToScientific.reserveCapacity(rows.count)
+        var scientificNames: Set<String> = []
+        scientificNames.reserveCapacity(rows.count)
+        for row in rows {
+            guard let code = row["speciesCode"] as? String,
+                  let scientific = (row["sciName"] as? String)?.lowercased() else {
+                continue
+            }
+            codeToScientific[code] = scientific
+            scientificNames.insert(scientific)
+        }
+
+        taxonomyCodeToScientific = codeToScientific
+        taxonomyScientificNames = scientificNames
+        RegionLog("loaded eBird taxonomy: \(scientificNames.count) species")
     }
 
     private func speciesCode(for scientificName: String, apiKey: String) async -> String? {
