@@ -487,7 +487,8 @@ struct ListenView: View {
                                 isIgnored: viewModel.isIgnored(group.representative),
                                 onIgnore: { viewModel.ignore(detection: group.representative) },
                                 onDelete: { viewModel.deleteDetections(in: group) },
-                                onSubmit: { viewModel.submitToEBirdSheet(for: group.strongest) }
+                                onSubmit: { viewModel.submitToEBirdSheet(for: group.strongest) },
+                                onOpenInfo: { viewModel.openEBirdInfo(for: group.representative) }
                             )
                         }
                     }

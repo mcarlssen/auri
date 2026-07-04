@@ -13,6 +13,7 @@ struct DetectionCardView: View {
     let onIgnore: () -> Void
     let onDelete: () -> Void
     let onSubmit: () -> Void
+    let onOpenInfo: () -> Void
 
     @State private var isHovering = false
 
@@ -27,7 +28,8 @@ struct DetectionCardView: View {
         timeDisplay: TimeDisplay = .relative,
         onIgnore: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onSubmit: @escaping () -> Void
+        onSubmit: @escaping () -> Void,
+        onOpenInfo: @escaping () -> Void = {}
     ) {
         self.group = group
         self.lifetimeCount = lifetimeCount
@@ -36,6 +38,7 @@ struct DetectionCardView: View {
         self.onIgnore = onIgnore
         self.onDelete = onDelete
         self.onSubmit = onSubmit
+        self.onOpenInfo = onOpenInfo
     }
 
     /// Single-detection card (History, file analysis) — wraps one detection.
@@ -46,7 +49,8 @@ struct DetectionCardView: View {
         timeDisplay: TimeDisplay = .relative,
         onIgnore: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onSubmit: @escaping () -> Void
+        onSubmit: @escaping () -> Void,
+        onOpenInfo: @escaping () -> Void = {}
     ) {
         self.init(
             group: DetectionGroup(detections: [detection]),
@@ -55,7 +59,8 @@ struct DetectionCardView: View {
             timeDisplay: timeDisplay,
             onIgnore: onIgnore,
             onDelete: onDelete,
-            onSubmit: onSubmit
+            onSubmit: onSubmit,
+            onOpenInfo: onOpenInfo
         )
     }
 
@@ -140,6 +145,7 @@ struct DetectionCardView: View {
             }
         }
         .contextMenu {
+            Button("View on eBird", action: onOpenInfo)
             Button("Submit to eBird", action: onSubmit)
             Button("Mute species", action: onIgnore)
                 .disabled(isIgnored)
@@ -148,6 +154,7 @@ struct DetectionCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
+        .accessibilityAction(named: "View on eBird", onOpenInfo)
         .accessibilityAction(named: "Submit to eBird", onSubmit)
         .accessibilityAction(named: "Mute species", onIgnore)
         .accessibilityAction(named: "Delete", onDelete)
@@ -182,6 +189,11 @@ struct DetectionCardView: View {
 
     private var hoverActions: some View {
         HStack(spacing: 5) {
+            cardActionButton(
+                systemImage: "info.circle",
+                help: "View \(detection.birdName) on eBird",
+                action: onOpenInfo
+            )
             cardActionButton(
                 systemImage: "speaker.slash",
                 help: "Mute species",
