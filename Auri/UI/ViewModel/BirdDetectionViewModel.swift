@@ -343,6 +343,34 @@ final class BirdDetectionViewModel: ObservableObject {
         showingEBirdForm = true
     }
 
+    /// Open the eBird page for a detected species. With an eBird API key we
+    /// resolve the exact species page (ebird.org/species/CODE); otherwise we
+    /// fall back to an eBird search for the species name.
+    func openEBirdInfo(for detection: BirdDetection) {
+        let scientificName = detection.scientificName
+        let apiKey = settings.resolvedEBirdApiKey
+        Task {
+            var url: URL?
+            if !apiKey.isEmpty,
+               let code = await EBirdRegionalService.shared.eBirdSpeciesCode(
+                   for: scientificName,
+                   apiKey: apiKey
+               ) {
+                url = URL(string: "https://ebird.org/species/\(code)")
+            }
+            let target = url ?? Self.eBirdSearchURL(forSpecies: scientificName)
+            if let target {
+                NSWorkspace.shared.open(target)
+            }
+        }
+    }
+
+    private static func eBirdSearchURL(forSpecies scientificName: String) -> URL? {
+        var components = URLComponents(string: "https://ebird.org/species/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: scientificName)]
+        return components?.url
+    }
+
     func deleteDetection(_ detection: BirdDetection) {
         detections.removeAll { $0.id == detection.id }
         historyStore.remove(id: detection.id)
