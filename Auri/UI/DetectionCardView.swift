@@ -144,9 +144,6 @@ struct DetectionCardView: View {
                 isHovering = hovering
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onOpenInfo)
-        .help("View \(detection.birdName) on eBird")
         .contextMenu {
             Button("View on eBird", action: onOpenInfo)
             Button("Submit to eBird", action: onSubmit)
@@ -157,8 +154,6 @@ struct DetectionCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Opens the species on eBird")
         .accessibilityAction(named: "View on eBird", onOpenInfo)
         .accessibilityAction(named: "Submit to eBird", onSubmit)
         .accessibilityAction(named: "Mute species", onIgnore)
@@ -194,6 +189,11 @@ struct DetectionCardView: View {
 
     private var hoverActions: some View {
         HStack(spacing: 5) {
+            cardActionButton(
+                systemImage: "info.circle",
+                help: "View \(detection.birdName) on eBird",
+                action: onOpenInfo
+            )
             cardActionButton(
                 systemImage: "speaker.slash",
                 help: "Mute species",
