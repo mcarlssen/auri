@@ -24,7 +24,7 @@ struct IgnoreListSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Add to ignore list")
+            Text("Mute a species")
                 .font(.subheadline.weight(.semibold))
 
             if species.isEmpty {
@@ -50,7 +50,7 @@ struct IgnoreListSettingsView: View {
                     }
                 }
 
-                Button("Add") {
+                Button("Mute") {
                     guard let bird = species.first(where: { $0.id == selectedBirdID }) else { return }
                     settings.ignore(bird: bird)
                     selectedBirdID = 0

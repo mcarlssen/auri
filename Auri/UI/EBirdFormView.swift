@@ -52,7 +52,7 @@ struct EBirdFormView: View {
             HStack {
                 Button("Cancel") { dismiss() }
                 Spacer()
-                Button("Open eBird", action: submit)
+                Button("Copy & Open eBird", action: submit)
                     .buttonStyle(.borderedProminent)
             }
         }

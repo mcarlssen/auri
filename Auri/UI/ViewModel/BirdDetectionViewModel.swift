@@ -71,7 +71,6 @@ final class BirdDetectionViewModel: ObservableObject {
         case monitor
         case offline
         case history
-        case ignoreList
         case eBird
         case settings
     }
@@ -332,11 +331,6 @@ final class BirdDetectionViewModel: ObservableObject {
     func openMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openMainWindowHandler?()
-    }
-
-    func submitToEBird(for detection: BirdDetection) {
-        selectedTab = .eBird
-        openMainWindow()
     }
 
     func submitToEBirdSheet(for detection: BirdDetection) {

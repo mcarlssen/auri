@@ -7,23 +7,19 @@ struct MainWindowView: View {
     var body: some View {
         TabView(selection: $viewModel.selectedTab) {
             ListenView(viewModel: viewModel)
-                .tabItem { Label("Monitor", systemImage: "waveform.path.ecg") }
+                .tabItem { Label("Listen", systemImage: "waveform.path.ecg") }
                 .tag(BirdDetectionViewModel.MainWindowTab.monitor)
-
-            OfflineAnalysisTabView(viewModel: viewModel)
-                .tabItem { Label("Offline", systemImage: "doc.text.magnifyingglass") }
-                .tag(BirdDetectionViewModel.MainWindowTab.offline)
 
             HistoryTabView(viewModel: viewModel)
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
                 .tag(BirdDetectionViewModel.MainWindowTab.history)
 
-            IgnoreListTabView(viewModel: viewModel)
-                .tabItem { Label("Ignore List", systemImage: "eye.slash") }
-                .tag(BirdDetectionViewModel.MainWindowTab.ignoreList)
+            OfflineAnalysisTabView(viewModel: viewModel)
+                .tabItem { Label("Analyze File", systemImage: "doc.text.magnifyingglass") }
+                .tag(BirdDetectionViewModel.MainWindowTab.offline)
 
             EBirdBatchView(viewModel: viewModel)
-                .tabItem { Label("eBird", systemImage: "bird") }
+                .tabItem { Label("Session List", systemImage: "bird") }
                 .tag(BirdDetectionViewModel.MainWindowTab.eBird)
 
             SettingsView(viewModel: viewModel, embedded: true)
@@ -530,72 +526,6 @@ extension BirdDetectionViewModel {
     }
 }
 
-struct IgnoreListTabView: View {
-    @ObservedObject var viewModel: BirdDetectionViewModel
-    @ObservedObject private var settings: AppSettings
-
-    init(viewModel: BirdDetectionViewModel) {
-        self.viewModel = viewModel
-        self.settings = viewModel.settings
-    }
-
-    private var ignoredNames: [String] {
-        settings.ignoredSpeciesNames.sorted {
-            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Suppressed detections")
-                        .font(.headline)
-
-                    if ignoredNames.isEmpty {
-                        Text("No ignored species yet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(ignoredNames, id: \.self) { name in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(name)
-                                    if let count = settings.suppressedCounts[name], count > 0 {
-                                        Text("\(count) detections suppressed")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Text("No suppressions yet")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Button("Remove") {
-                                    settings.unignore(speciesName: name, matchingSpecies: viewModel.species)
-                                    viewModel.objectWillChange.send()
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-
-                Divider()
-
-                IgnoreListSettingsView(settings: settings, species: viewModel.species)
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .task {
-            await viewModel.reloadSpeciesIfNeeded()
-        }
-    }
-}
-
 struct EBirdBatchView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject private var settings: AppSettings
@@ -616,7 +546,7 @@ struct EBirdBatchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("eBird species list")
+                Text("Session species list")
                     .font(.title2.bold())
 
                 Text(sessionWindowDescription)

@@ -181,6 +181,39 @@ struct SettingsView: View {
                     EBirdAttributionView()
                 }
 
+                Section("Muted species") {
+                    if mutedNames.isEmpty {
+                        Text("No muted species yet. Mute a species from any detection's hover actions or right-click menu, or add one below.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(mutedNames, id: \.self) { name in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(name)
+                                    if let count = settings.suppressedCounts[name], count > 0 {
+                                        Text("\(count) detections suppressed")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text("No suppressions yet")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button("Unmute") {
+                                    settings.unignore(speciesName: name, matchingSpecies: viewModel.species)
+                                    viewModel.objectWillChange.send()
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+
+                    IgnoreListSettingsView(settings: settings, species: viewModel.species)
+                }
+
                 Section("Developer") {
                     Toggle("Debug logging", isOn: $settings.debugLogging)
                 }
@@ -201,6 +234,12 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var mutedNames: [String] {
+        settings.ignoredSpeciesNames.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
     }
 
