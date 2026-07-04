@@ -233,7 +233,7 @@ struct ListenView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 18) {
             signalColumn
-                .frame(width: 330)
+                .frame(width: 396)
             detectionsColumn
                 .frame(maxWidth: .infinity)
         }
