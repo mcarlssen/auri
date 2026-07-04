@@ -344,15 +344,23 @@ struct ListenView: View {
     }
 
     private var sensitivityControl: some View {
-        HStack(spacing: 12) {
-            Text("Sensitivity")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
-            Text("+\(Int(settings.inputGainDB)) dB")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .trailing)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text("Sensitivity")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
+                Text("+\(Int(settings.inputGainDB)) dB")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .trailing)
+            }
+            if settings.autoGainEnabled {
+                Text("Auto-gain sets the final level for inference. Sensitivity still drives the meter, spectrogram, and silence gate.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .onChange(of: settings.inputGainDB) { _, gain in
             audioHandler.setInputGain(dB: gain)

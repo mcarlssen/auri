@@ -63,6 +63,12 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
+                        if settings.autoGainEnabled {
+                            Text("Auto-gain sets the final level for inference, so this has little effect there. Sensitivity still drives the input meter, the spectrogram, and the silence gate.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .onChange(of: settings.inputGainDB) { _, gain in
                         viewModel.audioHandler.setInputGain(dB: gain)
