@@ -2,7 +2,15 @@ import AppKit
 import SwiftUI
 
 struct SpectrogramView: View {
+    /// A moment worth marking on the scrolling timeline (e.g. a detection).
+    struct Marker: Identifiable {
+        let id: UUID
+        let timestamp: Date
+        let label: String
+    }
+
     let snapshot: SpectrogramEngine.Snapshot?
+    var markers: [Marker] = []
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
@@ -21,11 +29,39 @@ struct SpectrogramView: View {
         SpectrogramImageHost(snapshot: snapshot)
             .frame(maxWidth: .infinity)
             .frame(height: 236)
+            .clipped()
+            .overlay { markerOverlay }
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay {
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(.white.opacity(0.08))
             }
+    }
+
+    /// Vertical ticks where detections happened; positions recompute with each
+    /// published snapshot, so ticks scroll with the audio.
+    @ViewBuilder
+    private var markerOverlay: some View {
+        if let snapshot, !markers.isEmpty {
+            GeometryReader { proxy in
+                let history = Double(snapshot.historySeconds)
+                let now = Date()
+                ForEach(markers) { marker in
+                    let age = now.timeIntervalSince(marker.timestamp)
+                    if age >= 0, age < history {
+                        Rectangle()
+                            .fill(.orange.opacity(0.85))
+                            .frame(width: 1.5, height: proxy.size.height)
+                            .position(
+                                x: proxy.size.width * (1 - age / history),
+                                y: proxy.size.height / 2
+                            )
+                            .help(marker.label)
+                    }
+                }
+            }
+            .accessibilityHidden(true)
+        }
     }
 
     private var frequencyAxis: some View {
@@ -101,7 +137,14 @@ private struct SpectrogramImageHost: NSViewRepresentable {
         view.imageScaling = .scaleAxesIndependently
         view.imageAlignment = .alignBottomRight
         view.wantsLayer = true
+        view.layer?.masksToBounds = true
         view.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
+        // The image's pixel size is large; without lowering these priorities the
+        // view refuses to shrink to its SwiftUI frame and overflows the column.
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return view
     }
 

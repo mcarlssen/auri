@@ -88,55 +88,55 @@ struct SpeciesHistoryCard: View {
                     detection: detection,
                     lifetimeCount: viewModel.historyStore.lifetimeCount(for: detection.birdId),
                     isIgnored: viewModel.isIgnored(detection),
+                    timeDisplay: .absolute,
                     onIgnore: { viewModel.ignore(detection: detection) },
                     onDelete: { viewModel.deleteDetection(detection) },
                     onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
                 )
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("🐦 \(summary.birdName)")
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary.birdName)
                         .font(.headline)
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(summary.totalCount)")
-                            .font(.title3.monospacedDigit().bold())
-                        Text("lifetime")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(summary.scientificName)
+                        .font(.caption.italic())
+                        .foregroundStyle(.secondary)
                 }
 
-                Text(summary.scientificName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
 
-                HStack(spacing: 12) {
-                    Label(summary.lastSeen.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(seenSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    if summary.totalCount > 1 {
-                        Text("First: \(summary.firstSeen.formatted(date: .abbreviated, time: .omitted))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
                     if let rarity = summary.rarity {
                         Text(rarity.displayLabel)
-                            .font(.caption)
+                            .font(.caption2)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 1.5)
                             .background(rarityBackground(rarity), in: Capsule())
                     }
-
-                    Spacer()
                 }
+
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(summary.totalCount)")
+                        .font(.title3.monospacedDigit().bold())
+                    Text("lifetime")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minWidth: 52, alignment: .trailing)
             }
         }
         .padding(12)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var seenSummary: String {
+        let last = "last \(summary.lastSeen.formatted(date: .abbreviated, time: .shortened))"
+        guard summary.totalCount > 1 else { return last }
+        return "\(last) · first \(summary.firstSeen.formatted(date: .abbreviated, time: .omitted))"
     }
 
     private func rarityBackground(_ rarity: RarityInfo) -> Color {

@@ -10,6 +10,7 @@ struct SettingsView: View {
 
     @State private var devices: [AVCaptureDevice] = []
     @State private var launchAtLoginError: String?
+    @State private var advancedDetectionExpanded = false
 
     init(viewModel: BirdDetectionViewModel, embedded: Bool = false) {
         self.viewModel = viewModel
@@ -36,7 +37,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Recording") {
+                Section("Listening") {
                     Picker("Input source", selection: $settings.audioInputSource) {
                         ForEach(AudioInputSource.allCases) { source in
                             Text(source.label).tag(source)
@@ -56,14 +57,24 @@ struct SettingsView: View {
                             Task { await viewModel.refreshRuntime() }
                         }
                     }
-                }
 
-                Section("Spectrogram") {
-                    Text("Display uses 1024-point FFT at 512×192. Mel scale matches birdsong perception. BirdNET is unaffected.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Sensitivity: +\(Int(settings.inputGainDB)) dB")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
+                        if settings.autoGainEnabled {
+                            Text("Auto-gain sets the final level for inference, so this has little effect there. Sensitivity still drives the input meter, the spectrogram, and the silence gate.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .onChange(of: settings.inputGainDB) { _, gain in
+                        viewModel.audioHandler.setInputGain(dB: gain)
+                    }
 
-                    Picker("Frequency scale", selection: $settings.spectrogramFrequencyScale) {
+                    Picker("Spectrogram scale", selection: $settings.spectrogramFrequencyScale) {
                         ForEach(SpectrogramFrequencyScale.allCases) { scale in
                             Text(scale.label).tag(scale)
                         }
@@ -73,7 +84,7 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Min frequency: \(Int(settings.spectrogramMinFrequency)) Hz")
+                        Text("Spectrogram min frequency: \(Int(settings.spectrogramMinFrequency)) Hz")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Slider(value: $settings.spectrogramMinFrequency, in: 20...5000, step: 10)
@@ -83,7 +94,7 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Max frequency: \(Int(settings.spectrogramMaxFrequency)) Hz")
+                        Text("Spectrogram max frequency: \(Int(settings.spectrogramMaxFrequency)) Hz")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Slider(value: $settings.spectrogramMaxFrequency, in: 500...20_000, step: 100)
@@ -91,6 +102,10 @@ struct SettingsView: View {
                     .onChange(of: settings.spectrogramMaxFrequency) { _, _ in
                         viewModel.reconfigureSpectrogram()
                     }
+
+                    Text("Spectrogram display uses a 1024-point FFT at 512×192; the Mel scale matches birdsong perception. BirdNET analysis is unaffected by spectrogram settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Detection") {
@@ -102,33 +117,47 @@ struct SettingsView: View {
 
                     Toggle("Auto-gain before inference", isOn: $settings.autoGainEnabled)
 
-                    Picker("Window overlap", selection: $settings.detectionOverlap) {
-                        ForEach(DetectionOverlap.allCases) { overlap in
-                            Text(overlap.label).tag(overlap)
+                    DisclosureGroup(isExpanded: $advancedDetectionExpanded) {
+                        Picker("Window overlap", selection: $settings.detectionOverlap) {
+                            ForEach(DetectionOverlap.allCases) { overlap in
+                                Text(overlap.label).tag(overlap)
+                            }
                         }
-                    }
-                    .onChange(of: settings.detectionOverlap) { _, _ in
-                        viewModel.applyDetectionPipelineSettings()
-                    }
-
-                    Toggle("Skip silent windows", isOn: $settings.silenceSkipEnabled)
-                        .onChange(of: settings.silenceSkipEnabled) { _, _ in
-                            viewModel.applySilenceGate()
+                        .onChange(of: settings.detectionOverlap) { _, _ in
+                            viewModel.applyDetectionPipelineSettings()
                         }
 
-                    if settings.silenceSkipEnabled {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Silence threshold: \(Int(settings.silenceSkipThresholdDB)) dBFS peak")
-                                .font(.caption)
+                        Toggle("Skip silent windows", isOn: $settings.silenceSkipEnabled)
+                            .onChange(of: settings.silenceSkipEnabled) { _, _ in
+                                viewModel.applySilenceGate()
+                            }
+
+                        if settings.silenceSkipEnabled {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Silence threshold: \(Int(settings.silenceSkipThresholdDB)) dBFS peak")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Slider(value: $settings.silenceSkipThresholdDB, in: -80 ... -30, step: 1)
+                            }
+                            .onChange(of: settings.silenceSkipThresholdDB) { _, _ in
+                                viewModel.applySilenceGate()
+                            }
+                        }
+
+                        Text("BirdNET analyzes fixed 3-second windows; overlap controls how often a new window starts. More overlap catches calls that straddle window boundaries and lowers detection latency, at the cost of more inference. The silence gate skips inference when a window's peak level (after sensitivity gain, shown in the Listen meter) stays below the threshold.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        HStack {
+                            Text("Advanced")
+                            Spacer()
+                            Text(advancedDetectionSummary)
+                                .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
-                            Slider(value: $settings.silenceSkipThresholdDB, in: -80 ... -30, step: 1)
-                        }
-                        .onChange(of: settings.silenceSkipThresholdDB) { _, _ in
-                            viewModel.applySilenceGate()
                         }
                     }
 
-                    Text("BirdNET analyzes fixed 3-second windows; overlap controls how often a new window starts. More overlap catches calls that straddle window boundaries and lowers detection latency, at the cost of more inference. The silence gate skips inference when a window's peak level (after sensitivity gain, shown in the Monitor meter) stays below the threshold. Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try 25–40% threshold or use the suggested value after a minute of listening.")
+                    Text("Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try a 25–40% threshold or use the suggested value after a minute of listening.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -181,6 +210,39 @@ struct SettingsView: View {
                     EBirdAttributionView()
                 }
 
+                Section("Muted species") {
+                    if mutedNames.isEmpty {
+                        Text("No muted species yet. Mute a species from any detection's hover actions or right-click menu, or add one below.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(mutedNames, id: \.self) { name in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(name)
+                                    if let count = settings.suppressedCounts[name], count > 0 {
+                                        Text("\(count) detections suppressed")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text("No suppressions yet")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button("Unmute") {
+                                    settings.unignore(speciesName: name, matchingSpecies: viewModel.species)
+                                    viewModel.objectWillChange.send()
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+
+                    IgnoreListSettingsView(settings: settings, species: viewModel.species)
+                }
+
                 Section("Developer") {
                     Toggle("Debug logging", isOn: $settings.debugLogging)
                 }
@@ -201,6 +263,19 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var advancedDetectionSummary: String {
+        let gate = settings.silenceSkipEnabled
+            ? "gate \(Int(settings.silenceSkipThresholdDB)) dBFS"
+            : "gate off"
+        return "\(settings.detectionOverlap.label) · \(gate)"
+    }
+
+    private var mutedNames: [String] {
+        settings.ignoredSpeciesNames.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
     }
 
