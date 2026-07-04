@@ -96,7 +96,7 @@ final class RecognizerStaticsTests: XCTestCase {
         // clamping), so its first sample is preserved.
         let constant = [Float](repeating: 5, count: 100)
         let down = BirdNetCoreMLRecognizer.resample(constant, from: 96_000, to: 48_000)
-        XCTAssertEqual(down.first, 5, accuracy: 1e-4)
+        XCTAssertEqual(down.first ?? 0, 5, accuracy: 1e-4)
     }
 
     func testResampleConstantInputStaysConstant() {
