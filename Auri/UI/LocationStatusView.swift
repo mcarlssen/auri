@@ -6,6 +6,7 @@ struct LocationStatusView: View {
     let location: CLLocation?
     let authorizationStatus: CLAuthorizationStatus
     let regionalLabel: String?
+    var hasEBirdKey: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,6 +16,12 @@ struct LocationStatusView: View {
 
             Text(statusText)
                 .font(.callout.monospacedDigit())
+
+            if isEnabled, !hasEBirdKey {
+                Text("Regional filtering is inactive — add a free eBird API key below to enable it.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
 
             if let regionalLabel {
                 Text("eBird region: \(regionalLabel)")

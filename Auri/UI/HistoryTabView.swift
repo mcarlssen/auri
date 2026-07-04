@@ -91,7 +91,8 @@ struct SpeciesHistoryCard: View {
                     timeDisplay: .absolute,
                     onIgnore: { viewModel.ignore(detection: detection) },
                     onDelete: { viewModel.deleteDetection(detection) },
-                    onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
+                    onSubmit: { viewModel.submitToEBirdSheet(for: detection) },
+                    onOpenInfo: { viewModel.openEBirdInfo(for: detection) }
                 )
             }
         } label: {

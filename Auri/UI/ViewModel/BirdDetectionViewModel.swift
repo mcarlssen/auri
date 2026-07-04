@@ -63,6 +63,9 @@ final class BirdDetectionViewModel: ObservableObject {
     @Published private(set) var recognitionStats = RecognitionPipelineStats()
     @Published private(set) var fileAnalysisState: FileAnalysisState = .idle
     @Published private(set) var regionalLabel: String?
+    /// Raw per-window model output for the Debug accordion. Only populated while
+    /// debug capture is enabled (the accordion is open); newest first.
+    @Published private(set) var modelOutputLog: [ModelOutputEntry] = []
     @Published var showingEBirdForm = false
     @Published var selectedDetection: BirdDetection?
     @Published var selectedTab: MainWindowTab = .monitor
@@ -91,6 +94,12 @@ final class BirdDetectionViewModel: ObservableObject {
     private var runtimeTask: Task<Void, Never>?
     private var fileAnalysisTask: Task<Void, Never>?
     private var hasBootstrapped = false
+    /// A species not on the regional eBird list (rarity `.unusual`) is hidden
+    /// unless it scores at least this high — a very confident hit still surfaces
+    /// as a possible rare sighting rather than being filtered outright.
+    static let unusualSpeciesConfidenceFloor = 0.75
+    private var debugCaptureEnabled = false
+    private let maxModelOutputEntries = 150
 
     init() {
         Task { await bootstrapIfNeeded() }
@@ -338,6 +347,34 @@ final class BirdDetectionViewModel: ObservableObject {
         showingEBirdForm = true
     }
 
+    /// Open the eBird page for a detected species. With an eBird API key we
+    /// resolve the exact species page (ebird.org/species/CODE); otherwise we
+    /// fall back to an eBird search for the species name.
+    func openEBirdInfo(for detection: BirdDetection) {
+        let scientificName = detection.scientificName
+        let apiKey = settings.resolvedEBirdApiKey
+        Task {
+            var url: URL?
+            if !apiKey.isEmpty,
+               let code = await EBirdRegionalService.shared.eBirdSpeciesCode(
+                   for: scientificName,
+                   apiKey: apiKey
+               ) {
+                url = URL(string: "https://ebird.org/species/\(code)")
+            }
+            let target = url ?? Self.eBirdSearchURL(forSpecies: scientificName)
+            if let target {
+                NSWorkspace.shared.open(target)
+            }
+        }
+    }
+
+    private static func eBirdSearchURL(forSpecies scientificName: String) -> URL? {
+        var components = URLComponents(string: "https://ebird.org/species/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: scientificName)]
+        return components?.url
+    }
+
     func deleteDetection(_ detection: BirdDetection) {
         detections.removeAll { $0.id == detection.id }
         historyStore.remove(id: detection.id)
@@ -362,6 +399,47 @@ final class BirdDetectionViewModel: ObservableObject {
         detections.removeAll()
         settings.recentClearedAt = Date()
         selectedDetection = nil
+    }
+
+    /// The Debug accordion toggles live model-output capture on/off so there is
+    /// no per-window overhead while it is closed. Clears the log when disabled.
+    func setDebugCaptureEnabled(_ enabled: Bool) {
+        guard debugCaptureEnabled != enabled else { return }
+        debugCaptureEnabled = enabled
+        if !enabled {
+            modelOutputLog.removeAll()
+        }
+    }
+
+    func clearModelOutputLog() {
+        modelOutputLog.removeAll()
+    }
+
+    /// Scores below this are noise for debugging purposes and are omitted from
+    /// the model-output feed.
+    static let debugMinConfidence = 0.05
+
+    /// Record one window's raw model scores (top species, pre-threshold) so the
+    /// Debug accordion can show what is firing below the confidence threshold.
+    /// Scores under `debugMinConfidence` are dropped as noise.
+    private func captureModelOutput(_ responses: [RecognitionResponse]) {
+        let visible = responses.filter { $0.confidence >= Self.debugMinConfidence }
+        guard !visible.isEmpty else { return }
+        let threshold = settings.confidenceThreshold
+        let now = Date()
+        let entries = visible.map { response in
+            ModelOutputEntry(
+                birdName: response.bird,
+                scientificName: response.scientificName,
+                confidence: response.confidence,
+                threshold: threshold,
+                timestamp: now
+            )
+        }
+        modelOutputLog.insert(contentsOf: entries, at: 0)
+        if modelOutputLog.count > maxModelOutputEntries {
+            modelOutputLog = Array(modelOutputLog.prefix(maxModelOutputEntries))
+        }
     }
 
     var sessionSpecies: [SessionSpeciesSummary] {
@@ -472,6 +550,10 @@ final class BirdDetectionViewModel: ObservableObject {
                 recognitionStats.belowThresholdCount += 1
             }
 
+            if debugCaptureEnabled, source == .live {
+                captureModelOutput(result.detections)
+            }
+
             var recordedAny = false
             for response in result.detections {
                 if await handleRecognition(
@@ -519,10 +601,10 @@ final class BirdDetectionViewModel: ObservableObject {
         if settings.locationFilteringEnabled,
            let rarity,
            rarity.level == .unusual,
-           response.confidence < settings.confidenceThreshold + 0.1 {
+           response.confidence < Self.unusualSpeciesConfidenceFloor {
             RecognitionLogger.log(
-                "suppressed unusual species below boosted threshold: \(response.bird) " +
-                "conf=\(String(format: "%.3f", response.confidence))"
+                "suppressed unusual (non-local) species below \(Int(Self.unusualSpeciesConfidenceFloor * 100))% floor: " +
+                "\(response.bird) conf=\(String(format: "%.3f", response.confidence))"
             )
             return false
         }

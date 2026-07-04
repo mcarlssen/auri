@@ -51,7 +51,8 @@ struct OfflineAnalysisTabView: View {
                                 isIgnored: viewModel.isIgnored(detection),
                                 onIgnore: { viewModel.ignore(detection: detection) },
                                 onDelete: { viewModel.deleteDetection(detection) },
-                                onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
+                                onSubmit: { viewModel.submitToEBirdSheet(for: detection) },
+                                onOpenInfo: { viewModel.openEBirdInfo(for: detection) }
                             )
                         }
                     }

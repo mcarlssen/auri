@@ -19,5 +19,5 @@ Tools/CoreMLSpike/.build/
 .env
 **/.env
 
-# CodeGraph local index (generated per environment by the session-start hook)
+# CodeGraph local index (rebuilt per environment by the session-start hook)
 .codegraph/

@@ -57,6 +57,14 @@ actor EBirdRegionalService {
         return RarityInfo(level: .unusual, regionLabel: regionLabel, frequencyPercent: nil)
     }
 
+    /// Public resolver for the eBird 6-letter species code, used to link to a
+    /// species' eBird page. Returns nil without a key or when the lookup fails.
+    func eBirdSpeciesCode(for scientificName: String, apiKey: String) async -> String? {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return nil }
+        return await speciesCode(for: scientificName, apiKey: trimmedKey)
+    }
+
     private func speciesCode(for scientificName: String, apiKey: String) async -> String? {
         let normalized = scientificName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let cached = sciNameToCode[normalized] {
