@@ -27,7 +27,7 @@ actor BirdNetCoreMLRecognizer {
 
     static let maxResultsPerWindow = 10
 
-    private struct SpeciesLabel: Sendable {
+    struct SpeciesLabel: Sendable {
         let raw: String
         let scientificName: String
         let commonName: String
@@ -262,7 +262,7 @@ actor BirdNetCoreMLRecognizer {
         return nil
     }
 
-    private static func loadSpeciesLabels(from url: URL) throws -> [SpeciesLabel] {
+    static func loadSpeciesLabels(from url: URL) throws -> [SpeciesLabel] {
         let text = try String(contentsOf: url, encoding: .utf8)
         return text
             .split(whereSeparator: \.isNewline)
@@ -288,13 +288,13 @@ actor BirdNetCoreMLRecognizer {
             }
     }
 
-    private static func stableID(for label: String) -> Int {
+    static func stableID(for label: String) -> Int {
         let digest = Insecure.SHA1.hash(data: Data(label.utf8))
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         return Int(String(hex.prefix(8)), radix: 16) ?? 0
     }
 
-    private static func makeInputProvider(samples: [Float], featureName: String) throws -> MLFeatureProvider {
+    static func makeInputProvider(samples: [Float], featureName: String) throws -> MLFeatureProvider {
         guard samples.count >= windowSamples else {
             throw RecognizerError.invalidPCM
         }
@@ -306,7 +306,7 @@ actor BirdNetCoreMLRecognizer {
         return try MLDictionaryFeatureProvider(dictionary: [featureName: MLFeatureValue(multiArray: array)])
     }
 
-    private static func resample(_ samples: [Float], from sourceRate: Int, to targetRate: Int) -> [Float] {
+    static func resample(_ samples: [Float], from sourceRate: Int, to targetRate: Int) -> [Float] {
         guard sourceRate != targetRate, !samples.isEmpty else { return samples }
 
         let ratio = Double(targetRate) / Double(sourceRate)
@@ -324,13 +324,13 @@ actor BirdNetCoreMLRecognizer {
         return output
     }
 
-    private static func fitWindow(_ samples: [Float]) -> [Float] {
+    static func fitWindow(_ samples: [Float]) -> [Float] {
         if samples.count == windowSamples { return samples }
         if samples.count > windowSamples { return Array(samples.prefix(windowSamples)) }
         return samples + [Float](repeating: 0, count: windowSamples - samples.count)
     }
 
-    private static func topPredictions(from scores: MLMultiArray, limit: Int) -> [(index: Int, score: Double)] {
+    static func topPredictions(from scores: MLMultiArray, limit: Int) -> [(index: Int, score: Double)] {
         var best: [(index: Int, score: Double)] = []
         best.reserveCapacity(limit)
 

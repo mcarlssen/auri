@@ -49,11 +49,16 @@ final class RecognitionHistoryStore: ObservableObject {
     private var pendingSave: Task<Void, Never>?
     private static let saveDebounceNanoseconds: UInt64 = 2_000_000_000
 
-    init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directory = support.appendingPathComponent("Auri", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        fileURL = directory.appendingPathComponent("recognition-history.json")
+    init(directory: URL? = nil) {
+        let resolvedDirectory: URL
+        if let directory {
+            resolvedDirectory = directory
+        } else {
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            resolvedDirectory = support.appendingPathComponent("Auri", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(at: resolvedDirectory, withIntermediateDirectories: true)
+        fileURL = resolvedDirectory.appendingPathComponent("recognition-history.json")
         load()
     }
 
