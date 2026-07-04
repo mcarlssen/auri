@@ -198,12 +198,13 @@ struct SettingsView: View {
                         isEnabled: settings.locationFilteringEnabled,
                         location: locationProvider.lastKnownLocation,
                         authorizationStatus: locationProvider.authorizationStatus,
-                        regionalLabel: viewModel.regionalLabel
+                        regionalLabel: viewModel.regionalLabel,
+                        hasEBirdKey: !settings.resolvedEBirdApiKey.isEmpty
                     )
 
                     SecureField("eBird API key", text: $settings.eBirdApiKey)
 
-                    Text("BirdNET's audio model does not accept location input. When enabled, Auri uses your location and eBird regional checklists to flag unusual species and improve accuracy by filtering out-of-range false positives. Species not expected in your area require an additional 10% confidence to qualify; expected species are unaffected. Get a free API key at ebird.org/api/keygen.")
+                    Text("BirdNET's audio model does not accept location input. When enabled, Auri uses your location and eBird regional checklists to filter out-of-range false positives. A species not expected in your area is hidden unless it scores at least \(Int(BirdDetectionViewModel.unusualSpeciesConfidenceFloor * 100))% confidence; expected species are unaffected. Regional filtering needs a free API key from ebird.org/api/keygen — without one it has no effect.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

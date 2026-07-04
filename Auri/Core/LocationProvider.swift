@@ -41,8 +41,15 @@ final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDeleg
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             authorizationStatus = manager.authorizationStatus
-            if manager.authorizationStatus == .authorized {
+            // macOS reports a granted "when in use" request as .authorizedWhenInUse
+            // (and .authorizedAlways); the deprecated .authorized alias alone missed
+            // both, so location updates never restarted after the user granted
+            // access — leaving lastKnownLocation nil and regional filtering inert.
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
                 manager.startUpdatingLocation()
+            default:
+                break
             }
         }
     }
