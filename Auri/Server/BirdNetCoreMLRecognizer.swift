@@ -70,22 +70,23 @@ actor BirdNetCoreMLRecognizer {
             }
 
             let labels = try Self.loadSpeciesLabels(from: labelsURL)
-            let compiledURL = try await MLModel.compileModel(at: modelURL)
 
             let config = MLModelConfiguration()
             config.computeUnits = .all
-            let loadedModel = try MLModel(contentsOf: compiledURL, configuration: config)
+            let loadedModel = try await Self.loadCompiledModel(source: modelURL, configuration: config)
 
             guard let inputName = loadedModel.modelDescription.inputDescriptionsByName.keys.first else {
                 throw RecognizerError.invalidModel("Model has no inputs")
             }
 
             let silence = [Float](repeating: 0, count: Self.windowSamples)
-            let warmupProvider = try Self.makeInputProvider(
-                samples: silence,
-                featureName: inputName
-            )
-            _ = try await loadedModel.prediction(from: warmupProvider)
+            try autoreleasepool {
+                let warmupProvider = try Self.makeInputProvider(
+                    samples: silence,
+                    featureName: inputName
+                )
+                _ = try loadedModel.prediction(from: warmupProvider)
+            }
 
             model = loadedModel
             inputFeatureName = inputName
@@ -145,18 +146,22 @@ actor BirdNetCoreMLRecognizer {
 
         RecognizerLog("recognize samples=\(samples.count) sr=\(sampleRate)")
         let started = CFAbsoluteTimeGetCurrent()
-        let provider = try Self.makeInputProvider(samples: samples, featureName: inputFeatureName)
-        let output = try await model.prediction(from: provider)
+        // The prediction's IOSurface-backed input/output buffers are autoreleased,
+        // and this actor's cooperative thread never drains its pool on its own, so
+        // every window leaks its buffers until the pool is drained explicitly.
+        // Extract plain Swift values before leaving the pool.
+        let predictions: [(index: Int, score: Double)] = try autoreleasepool {
+            let provider = try Self.makeInputProvider(samples: samples, featureName: inputFeatureName)
+            let output = try model.prediction(from: provider)
+            guard let outputName = output.featureNames.first,
+                  let value = output.featureValue(for: outputName),
+                  let scores = value.multiArrayValue else {
+                return []
+            }
+            return Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
+        }
         let inferenceMs = Int((CFAbsoluteTimeGetCurrent() - started) * 1000)
         RecognizerLog("inference finished \(inferenceMs)ms")
-
-        guard let outputName = output.featureNames.first,
-              let value = output.featureValue(for: outputName),
-              let scores = value.multiArrayValue else {
-            return RecognitionCallResult(detections: [], inferenceMs: inferenceMs, autoGainDB: appliedAutoGainDB)
-        }
-
-        let predictions = Self.topPredictions(from: scores, limit: Self.maxResultsPerWindow)
         let detections = predictions.compactMap { prediction -> RecognitionResponse? in
             guard let label = speciesLabels[safe: prediction.index] else { return nil }
             return RecognitionResponse(
@@ -192,6 +197,55 @@ actor BirdNetCoreMLRecognizer {
                 return "PCM byte length must be a multiple of 4."
             }
         }
+    }
+
+    /// Compiling the .mlpackage takes seconds and previously ran on every launch,
+    /// leaving a fresh compiled copy in the temp directory each time. Cache the
+    /// compiled .mlmodelc in Application Support, keyed by bundle version and the
+    /// model file's modification time, and fall back to a fresh compile whenever
+    /// the cache is missing or unloadable.
+    private static func loadCompiledModel(
+        source: URL,
+        configuration: MLModelConfiguration
+    ) async throws -> MLModel {
+        let fileManager = FileManager.default
+        var cachedURL: URL?
+        if let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let directory = support.appendingPathComponent("Auri/CompiledModels", isDirectory: true)
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let version = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+            let attributes = try? fileManager.attributesOfItem(atPath: source.path)
+            let modifiedAt = Int((attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+            let name = source.deletingPathExtension().lastPathComponent
+            cachedURL = directory.appendingPathComponent(
+                "\(name)-v\(version)-\(modifiedAt).mlmodelc",
+                isDirectory: true
+            )
+        }
+
+        if let cachedURL, fileManager.fileExists(atPath: cachedURL.path) {
+            if let model = try? MLModel(contentsOf: cachedURL, configuration: configuration) {
+                RecognizerLog("Loaded compiled model from cache")
+                return model
+            }
+            RecognizerLog("Cached compiled model unloadable; recompiling")
+            try? fileManager.removeItem(at: cachedURL)
+        }
+
+        let compiledURL = try await MLModel.compileModel(at: source)
+        if let cachedURL {
+            // Drop caches left behind by older app versions before storing this one.
+            let directory = cachedURL.deletingLastPathComponent()
+            if let contents = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+                for url in contents where url.pathExtension == "mlmodelc" {
+                    try? fileManager.removeItem(at: url)
+                }
+            }
+            if (try? fileManager.moveItem(at: compiledURL, to: cachedURL)) != nil {
+                return try MLModel(contentsOf: cachedURL, configuration: configuration)
+            }
+        }
+        return try MLModel(contentsOf: compiledURL, configuration: configuration)
     }
 
     private static func resourceURL(
@@ -241,10 +295,13 @@ actor BirdNetCoreMLRecognizer {
     }
 
     private static func makeInputProvider(samples: [Float], featureName: String) throws -> MLFeatureProvider {
+        guard samples.count >= windowSamples else {
+            throw RecognizerError.invalidPCM
+        }
         let array = try MLMultiArray(shape: [1, NSNumber(value: windowSamples)], dataType: .float32)
-        let pointer = array.dataPointer.bindMemory(to: Float.self, capacity: windowSamples)
-        for index in 0..<windowSamples {
-            pointer[index] = samples[index]
+        samples.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            memcpy(array.dataPointer, base, windowSamples * MemoryLayout<Float>.size)
         }
         return try MLDictionaryFeatureProvider(dictionary: [featureName: MLFeatureValue(multiArray: array)])
     }
@@ -274,18 +331,30 @@ actor BirdNetCoreMLRecognizer {
     }
 
     private static func topPredictions(from scores: MLMultiArray, limit: Int) -> [(index: Int, score: Double)] {
-        let count = scores.count
         var best: [(index: Int, score: Double)] = []
         best.reserveCapacity(limit)
 
-        for index in 0..<count {
-            let score = scores[index].doubleValue
+        func consider(_ index: Int, _ score: Double) {
             if best.count < limit {
                 best.append((index, score))
                 best.sort { $0.score > $1.score }
-            } else if score > best.last!.score {
+            } else if score > best[limit - 1].score {
                 best[limit - 1] = (index, score)
                 best.sort { $0.score > $1.score }
+            }
+        }
+
+        if scores.dataType == .float32 {
+            // Scanning through the typed buffer avoids boxing one NSNumber per
+            // species (~6.5k allocations) on every window.
+            scores.withUnsafeBufferPointer(ofType: Float.self) { buffer in
+                for (index, value) in buffer.enumerated() {
+                    consider(index, Double(value))
+                }
+            }
+        } else {
+            for index in 0..<scores.count {
+                consider(index, scores[index].doubleValue)
             }
         }
 

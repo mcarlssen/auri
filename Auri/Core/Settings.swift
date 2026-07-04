@@ -31,6 +31,39 @@ enum SpectrogramOverlap: Double, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Overlap between consecutive BirdNET analysis windows. The model's input is a
+/// fixed 3-second window; overlap controls how often a new window is analyzed.
+enum DetectionOverlap: String, CaseIterable, Identifiable, Codable {
+    case off
+    case half
+    case twoThirds
+    case threeQuarters
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: return "None (every 3 s)"
+        case .half: return "50% (every 1.5 s)"
+        case .twoThirds: return "67% (every 1 s)"
+        case .threeQuarters: return "75% (every 0.75 s)"
+        }
+    }
+
+    private var windowDivisor: Int {
+        switch self {
+        case .off: return 1
+        case .half: return 2
+        case .twoThirds: return 3
+        case .threeQuarters: return 4
+        }
+    }
+
+    func hopSamples(windowSamples: Int) -> Int {
+        max(1, windowSamples / windowDivisor)
+    }
+}
+
 enum SpectrogramFrequencyScale: String, CaseIterable, Identifiable, Codable {
     case mel
     case linear
@@ -116,6 +149,19 @@ final class AppSettings: ObservableObject {
     }
 
     @Published var autoGainEnabled: Bool {
+        didSet { save() }
+    }
+
+    @Published var detectionOverlap: DetectionOverlap {
+        didSet { save() }
+    }
+
+    /// Skip BirdNET inference for windows whose peak stays below the silence threshold.
+    @Published var silenceSkipEnabled: Bool {
+        didSet { save() }
+    }
+
+    @Published var silenceSkipThresholdDB: Double {
         didSet { save() }
     }
 
@@ -246,6 +292,11 @@ final class AppSettings: ObservableObject {
     private init() {
         confidenceThreshold = defaults.object(forKey: "confidenceThreshold") as? Double ?? 0.35
         autoGainEnabled = defaults.object(forKey: "autoGainEnabled") as? Bool ?? true
+        detectionOverlap = DetectionOverlap(
+            rawValue: defaults.string(forKey: "detectionOverlap") ?? ""
+        ) ?? .half
+        silenceSkipEnabled = defaults.object(forKey: "silenceSkipEnabled") as? Bool ?? true
+        silenceSkipThresholdDB = defaults.object(forKey: "silenceSkipThresholdDB") as? Double ?? -65
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
         perSpeciesCooldownSeconds = defaults.object(forKey: "perSpeciesCooldownSeconds") as? Double ?? 3600
         locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
@@ -316,6 +367,9 @@ final class AppSettings: ObservableObject {
     private func save() {
         defaults.set(confidenceThreshold, forKey: "confidenceThreshold")
         defaults.set(autoGainEnabled, forKey: "autoGainEnabled")
+        defaults.set(detectionOverlap.rawValue, forKey: "detectionOverlap")
+        defaults.set(silenceSkipEnabled, forKey: "silenceSkipEnabled")
+        defaults.set(silenceSkipThresholdDB, forKey: "silenceSkipThresholdDB")
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
         defaults.set(perSpeciesCooldownSeconds, forKey: "perSpeciesCooldownSeconds")
         defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")

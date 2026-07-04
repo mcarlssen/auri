@@ -5,6 +5,7 @@ struct RecognitionPipelineStats: Equatable {
     var isInFlight = false
     var lastInferenceMs: Int?
     var skippedWindows: UInt64 = 0
+    var silentWindowsSkipped: UInt64 = 0
     var belowThresholdCount: UInt64 = 0
     var lastCompletedAt: Date?
     var rollingAverageTopConfidence: Double?
@@ -30,10 +31,12 @@ struct RecognitionPipelineStats: Equatable {
     }
 
     var isCriticallyBehind: Bool {
+        // skippedWindows is a lifetime counter, so it can't participate here —
+        // it would latch this warning on forever after three skips.
         if let ms = lastInferenceMs, ms > 10_000 {
             return true
         }
-        return skippedWindows >= 3
+        return false
     }
 }
 

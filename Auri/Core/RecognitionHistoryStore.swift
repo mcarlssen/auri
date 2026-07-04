@@ -46,6 +46,8 @@ final class RecognitionHistoryStore: ObservableObject {
 
     private let maxEntries = 5_000
     private let fileURL: URL
+    private var pendingSave: Task<Void, Never>?
+    private static let saveDebounceNanoseconds: UInt64 = 2_000_000_000
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -60,19 +62,27 @@ final class RecognitionHistoryStore: ObservableObject {
         if entries.count > maxEntries {
             entries = Array(entries.prefix(maxEntries))
         }
-        save()
+        scheduleSave()
     }
 
     func clear() {
         entries.removeAll()
-        save()
+        scheduleSave()
     }
 
     func remove(id: UUID) {
         let originalCount = entries.count
         entries.removeAll { $0.id == id }
         guard entries.count != originalCount else { return }
-        save()
+        scheduleSave()
+    }
+
+    /// Write any pending changes immediately; call before the app terminates.
+    func flush() {
+        guard pendingSave != nil else { return }
+        pendingSave?.cancel()
+        pendingSave = nil
+        writeToDisk()
     }
 
     func entries(forBirdId birdId: Int) -> [BirdDetection] {
@@ -162,7 +172,19 @@ final class RecognitionHistoryStore: ObservableObject {
         entries = (try? decoder.decode([BirdDetection].self, from: data)) ?? []
     }
 
-    private func save() {
+    /// Serializing 5k pretty-printed entries per detection is wasteful during a
+    /// burst of recognitions; coalesce writes behind a short debounce instead.
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.saveDebounceNanoseconds)
+            guard !Task.isCancelled, let self else { return }
+            self.pendingSave = nil
+            self.writeToDisk()
+        }
+    }
+
+    private func writeToDisk() {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

@@ -48,9 +48,12 @@ final class AudioHandler: ObservableObject {
     private var targetFormat: AVAudioFormat?
     private var bufferAccumulator = Data()
     private static let birdNetWindowSampleCount = BirdNetCoreMLRecognizer.windowSamples
-    private static let birdNetHopSampleCount = birdNetWindowSampleCount / 2
     private static let birdNetWindowByteCount = birdNetWindowSampleCount * MemoryLayout<Float>.size
-    private static let birdNetHopByteCount = birdNetHopSampleCount * MemoryLayout<Float>.size
+    private var hopByteCount = (birdNetWindowSampleCount / 2) * MemoryLayout<Float>.size
+    private var silenceGateEnabled = false
+    private var silenceGateThresholdLinear: Float = 0
+    private var silentSkipCount: UInt64 = 0
+    @Published private(set) var silentWindowsSkipped: UInt64 = 0
     private var bufferCount: UInt64 = 0
     private var lastBufferReceivedAt = Date.distantPast
     private var lastSpectrogramPublish = Date.distantPast
@@ -59,6 +62,11 @@ final class AudioHandler: ObservableObject {
     private var spectrogramNeedsSnapshot = false
     private var spectrogramPendingSamples: [Float] = []
     private var spectrogramDrainInFlight = false
+    // Guarded by spectrogramLock. While no view displays the spectrogram
+    // (menu bar apps run headless most of the time), skip the FFT/render
+    // pipeline entirely.
+    private var spectrogramDisplayActive = false
+    private var spectrogramObserverCount = 0
     private var spectrogramPublishTimer: DispatchSourceTimer?
     private let spectrogramLock = NSLock()
     private let maxPendingSamples = BirdNetCoreMLRecognizer.modelSampleRate * 2
@@ -67,6 +75,7 @@ final class AudioHandler: ObservableObject {
     private var activeCaptureKey: CaptureKey?
     private var processingBacklog = 0
     private let maxProcessingBacklog = 6
+    private let processingBacklogLock = NSLock()
     private var loggedPassthrough = false
 
     private struct CaptureKey: Equatable {
@@ -179,6 +188,36 @@ final class AudioHandler: ObservableObject {
     }
 
     @MainActor
+    func setSilenceGate(enabled: Bool, thresholdDB: Double) {
+        silenceGateEnabled = enabled
+        silenceGateThresholdLinear = Float(pow(10, thresholdDB / 20))
+    }
+
+    /// Views displaying the spectrogram register here; the FFT/render pipeline
+    /// only runs while at least one observer is visible.
+    @MainActor
+    func setSpectrogramVisible(_ visible: Bool) {
+        spectrogramLock.lock()
+        spectrogramObserverCount = max(0, spectrogramObserverCount + (visible ? 1 : -1))
+        let active = spectrogramObserverCount > 0
+        let becameActive = active && !spectrogramDisplayActive
+        spectrogramDisplayActive = active
+        if !active {
+            spectrogramPendingSamples.removeAll(keepingCapacity: false)
+        }
+        spectrogramLock.unlock()
+
+        if becameActive {
+            // Old columns are stale after a gap; restart the scroll from blank.
+            spectrogramQueue.async { [weak self] in
+                guard let self else { return }
+                self.spectrogramEngine.resetBuffer()
+                self.resetSpectrogramPublishState()
+            }
+        }
+    }
+
+    @MainActor
     func start(settings: AppSettings) throws {
         AudioLog("Starting audio with recordingEnabled=\(settings.recordingEnabled)")
         guard settings.recordingEnabled else {
@@ -257,15 +296,40 @@ final class AudioHandler: ObservableObject {
         bufferAccumulator.removeAll(keepingCapacity: true)
         bufferCount = 0
         loggedPassthrough = false
+        hopByteCount = settings.detectionOverlap.hopSamples(
+            windowSamples: Self.birdNetWindowSampleCount
+        ) * MemoryLayout<Float>.size
+        setSilenceGate(enabled: settings.silenceSkipEnabled, thresholdDB: settings.silenceSkipThresholdDB)
+        silentSkipCount = 0
+        silentWindowsSkipped = 0
         AudioLog("Target format sr=\(Int(targetFormat.sampleRate)) ch=\(Int(targetFormat.channelCount))")
 
         captureDelegate.onSampleBuffer = { [weak self] sampleBuffer in
             guard let self else { return }
+            // Count queued buffers at enqueue time, on the capture callback. The
+            // processing queue is serial, so counting inside the work item can
+            // never observe a backlog above 1 — if processing falls behind, the
+            // queue would retain an unbounded pile of CMSampleBuffers instead of
+            // shedding load.
+            self.processingBacklogLock.lock()
+            guard self.processingBacklog < self.maxProcessingBacklog else {
+                self.processingBacklogLock.unlock()
+                return
+            }
+            self.processingBacklog += 1
+            self.processingBacklogLock.unlock()
             self.processingQueue.async {
-                self.processingBacklog += 1
-                defer { self.processingBacklog -= 1 }
-                guard self.processingBacklog <= self.maxProcessingBacklog else { return }
-                self.handle(sampleBuffer: sampleBuffer)
+                defer {
+                    self.processingBacklogLock.lock()
+                    self.processingBacklog -= 1
+                    self.processingBacklogLock.unlock()
+                }
+                // The queue never goes idle while listening, so its implicit
+                // autorelease pool rarely drains; the PCM buffers and converter
+                // scratch allocated per callback need an explicit pool.
+                autoreleasepool {
+                    self.handle(sampleBuffer: sampleBuffer)
+                }
             }
         }
         audioOutput.setSampleBufferDelegate(captureDelegate, queue: captureQueue)
@@ -354,10 +418,29 @@ final class AudioHandler: ObservableObject {
         }
 
         while bufferAccumulator.count >= Self.birdNetWindowByteCount {
+            if silenceGateEnabled, windowPeakBelowGate() {
+                silentSkipCount &+= 1
+                let count = silentSkipCount
+                Task { @MainActor in self.silentWindowsSkipped = count }
+                bufferAccumulator.removeFirst(hopByteCount)
+                continue
+            }
             let window = bufferAccumulator.prefix(Self.birdNetWindowByteCount)
             onWindowReady?(Data(window), BirdNetCoreMLRecognizer.modelSampleRate)
-            bufferAccumulator.removeFirst(Self.birdNetHopByteCount)
+            bufferAccumulator.removeFirst(hopByteCount)
         }
+    }
+
+    /// True when the next window's peak magnitude is below the silence gate,
+    /// meaning inference would be spent on inaudible audio.
+    private func windowPeakBelowGate() -> Bool {
+        var peak: Float = 0
+        bufferAccumulator.withUnsafeBytes { raw in
+            let floats = raw.bindMemory(to: Float.self)
+            guard let base = floats.baseAddress else { return }
+            vDSP_maxmgv(base, 1, &peak, vDSP_Length(Self.birdNetWindowSampleCount))
+        }
+        return peak < silenceGateThresholdLinear
     }
 
     private func applyInputGain(to samples: inout [Float]) {
@@ -389,6 +472,10 @@ final class AudioHandler: ObservableObject {
 
     private func submitSpectrogramSamples(_ samples: [Float]) {
         spectrogramLock.lock()
+        guard spectrogramDisplayActive else {
+            spectrogramLock.unlock()
+            return
+        }
         spectrogramPendingSamples.append(contentsOf: samples)
         if spectrogramPendingSamples.count > maxPendingSamples {
             spectrogramPendingSamples.removeFirst(spectrogramPendingSamples.count - maxPendingSamples)
@@ -593,8 +680,7 @@ final class AudioHandler: ObservableObject {
 
         var mono = [Float](repeating: 0, count: frames)
         for channel in 0..<channels {
-            let ptr = channelData[channel]
-            for index in 0..<frames { mono[index] += ptr[index] }
+            vDSP_vadd(mono, 1, channelData[channel], 1, &mono, 1, vDSP_Length(frames))
         }
         var scale = Float(1.0 / Float(channels))
         vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(frames))
@@ -614,14 +700,11 @@ final class AudioHandler: ObservableObject {
         }
 
         var mono = [Float](repeating: 0, count: frames)
-        for frame in 0..<frames {
-            var sum: Float = 0
-            let base = frame * channels
-            for channel in 0..<channels {
-                sum += ptr[base + channel]
-            }
-            mono[frame] = sum / Float(channels)
+        for channel in 0..<channels {
+            vDSP_vadd(mono, 1, ptr.advanced(by: channel), vDSP_Stride(channels), &mono, 1, vDSP_Length(frames))
         }
+        var scale = Float(1.0 / Float(channels))
+        vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(frames))
         return mono
     }
 
