@@ -72,6 +72,44 @@ struct DetectionCardView: View {
         detection.rarity?.level == .unusual
     }
 
+    /// A plain-language trust band for the confidence score, so a birder can
+    /// judge a hit without interpreting a bare percentage.
+    private var confidenceBand: (label: String, color: Color) {
+        switch group.peakConfidence {
+        case ..<0.5: return ("Tentative", .orange)
+        case ..<0.75: return ("Probable", .secondary)
+        default: return ("Confident", .green)
+        }
+    }
+
+    /// True when this is the only time the species appears in history.
+    private var isFirstEver: Bool { lifetimeCount == 1 }
+
+    /// Shows expected-vs-unusual for the area when location filtering has data.
+    @ViewBuilder
+    private var rarityBadge: some View {
+        if let rarity = detection.rarity {
+            switch rarity.level {
+            case .unusual:
+                Text(rarity.displayLabel)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(.orange.opacity(0.2), in: Capsule())
+                    .foregroundStyle(.orange)
+            case .expected:
+                Text("Common here")
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(.green.opacity(0.15), in: Capsule())
+                    .foregroundStyle(.secondary)
+            case .unknown:
+                EmptyView()
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
@@ -102,22 +140,27 @@ struct DetectionCardView: View {
                 confidenceBar
                 Text(String(format: "%.0f%%", group.peakConfidence * 100))
                     .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(confidenceBand.color)
                     .help(group.count > 1 ? "Peak confidence across \(group.count) detections" : "Confidence")
+                Text(confidenceBand.label)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(confidenceBand.color)
 
-                if let lifetimeCount, lifetimeCount > 1 {
+                if isFirstEver {
+                    Text("★ First")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.blue.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.blue)
+                        .help("First time you've recorded this species")
+                } else if let lifetimeCount, lifetimeCount > 1 {
                     Text("\(lifetimeCount) lifetime")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                if let rarity = detection.rarity, rarity.level == .unusual {
-                    Text(rarity.displayLabel)
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(.orange.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.orange)
-                }
+                rarityBadge
 
                 Spacer()
             }
