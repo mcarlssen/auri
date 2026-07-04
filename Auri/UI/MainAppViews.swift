@@ -6,24 +6,20 @@ struct MainWindowView: View {
 
     var body: some View {
         TabView(selection: $viewModel.selectedTab) {
-            MonitorView(viewModel: viewModel)
-                .tabItem { Label("Monitor", systemImage: "waveform.path.ecg") }
+            ListenView(viewModel: viewModel)
+                .tabItem { Label("Listen", systemImage: "waveform.path.ecg") }
                 .tag(BirdDetectionViewModel.MainWindowTab.monitor)
-
-            OfflineAnalysisTabView(viewModel: viewModel)
-                .tabItem { Label("Offline", systemImage: "doc.text.magnifyingglass") }
-                .tag(BirdDetectionViewModel.MainWindowTab.offline)
 
             HistoryTabView(viewModel: viewModel)
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
                 .tag(BirdDetectionViewModel.MainWindowTab.history)
 
-            IgnoreListTabView(viewModel: viewModel)
-                .tabItem { Label("Ignore List", systemImage: "eye.slash") }
-                .tag(BirdDetectionViewModel.MainWindowTab.ignoreList)
+            OfflineAnalysisTabView(viewModel: viewModel)
+                .tabItem { Label("Analyze File", systemImage: "doc.text.magnifyingglass") }
+                .tag(BirdDetectionViewModel.MainWindowTab.offline)
 
             EBirdBatchView(viewModel: viewModel)
-                .tabItem { Label("eBird", systemImage: "bird") }
+                .tabItem { Label("Session List", systemImage: "bird") }
                 .tag(BirdDetectionViewModel.MainWindowTab.eBird)
 
             SettingsView(viewModel: viewModel, embedded: true)
@@ -140,62 +136,93 @@ struct AudioStatsView: View {
     }
 }
 
-struct RuntimeControlsView: View {
+enum ListenState: Equatable {
+    case listening
+    case paused
+    case starting
+    case micDenied
+    case modelFailed(String)
+
+    var label: String {
+        switch self {
+        case .listening: return "Listening"
+        case .paused: return "Paused"
+        case .starting: return "Starting…"
+        case .micDenied: return "Microphone access denied"
+        case .modelFailed: return "Model failed to load"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .listening: return .green
+        case .paused: return .secondary
+        case .starting: return .yellow
+        case .micDenied, .modelFailed: return .red
+        }
+    }
+
+    @MainActor
+    static func current(viewModel: BirdDetectionViewModel) -> ListenState {
+        if case .failed(let message) = viewModel.modelState {
+            return .modelFailed(message)
+        }
+        if viewModel.audioHandler.isPermissionDenied, viewModel.settings.recordingEnabled {
+            return .micDenied
+        }
+        if viewModel.modelState == .loading {
+            return .starting
+        }
+        return viewModel.isListening ? .listening : .paused
+    }
+}
+
+/// One combined status pill replacing the separate model/listening dot rows.
+/// Model state only surfaces when it is the problem.
+struct ListenStatusPill: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            modelRow
-            listeningRow
-        }
-    }
-
-    private var modelRow: some View {
+        let state = ListenState.current(viewModel: viewModel)
         HStack(spacing: 8) {
-            Circle()
-                .fill(modelIndicatorColor)
-                .frame(width: 8, height: 8)
-            Text(viewModel.modelStatusLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            if case .failed = viewModel.modelState {
-                Button("Reload Model") { viewModel.reloadModel() }
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(state.color)
+                    .frame(width: 8, height: 8)
+                Text(state.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(state.color == .secondary ? Color.secondary : state.color)
             }
-        }
-    }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 4)
+            .background(state.color.opacity(0.13), in: Capsule())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Status: \(state.label)")
 
-    private var listeningRow: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(viewModel.isListening ? .green : .red)
-                .frame(width: 8, height: 8)
-            Text(viewModel.listeningStatusLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if case .modelFailed = state {
+                Button("Reload Model") { viewModel.reloadModel() }
+                    .controlSize(.small)
+            }
+
             Spacer(minLength: 8)
+
             if viewModel.canStopListening {
-                Button("Stop Listening") { viewModel.stopListening() }
+                Button("Stop") { viewModel.stopListening() }
+                    .controlSize(.small)
             } else if viewModel.canStartListening {
                 Button("Start Listening") { viewModel.startListening() }
+                    .controlSize(.small)
             }
-        }
-    }
-
-    private var modelIndicatorColor: Color {
-        switch viewModel.modelState {
-        case .ready: return .green
-        case .loading: return .yellow
-        case .stopped: return .secondary
-        case .failed: return .red
         }
     }
 }
 
-struct MonitorView: View {
+struct ListenView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject private var audioHandler: AudioHandler
     @ObservedObject private var settings: AppSettings
+    @AppStorage("listenTuningExpanded") private var tuningExpanded = false
+    @AppStorage("listenStatsExpanded") private var statsExpanded = false
 
     init(viewModel: BirdDetectionViewModel) {
         self.viewModel = viewModel
@@ -204,40 +231,156 @@ struct MonitorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            RuntimeControlsView(viewModel: viewModel)
+        HStack(alignment: .top, spacing: 18) {
+            signalColumn
+                .frame(width: 396)
+            detectionsColumn
+                .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Live spectrogram")
+    // MARK: signal column
+
+    private var signalColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ListenStatusPill(viewModel: viewModel)
+
+            SpectrogramView(snapshot: audioHandler.spectrogram, markers: spectrogramMarkers)
+                .onAppear { audioHandler.setSpectrogramVisible(true) }
+                .onDisappear { audioHandler.setSpectrogramVisible(false) }
+
+            levelMeter
+
+            DisclosureGroup(isExpanded: $tuningExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    sensitivityControl
+                    ConfidenceThresholdControls(
+                        settings: settings,
+                        stats: viewModel.recognitionStats,
+                        onApplySuggested: viewModel.applySuggestedConfidenceThreshold
+                    )
+                }
+                .padding(.top, 8)
+            } label: {
+                disclosureLabel("Tuning", summary: tuningSummary)
+            }
+
+            DisclosureGroup(isExpanded: $statsExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    AudioStatsView(stats: viewModel.meterStats)
+                    InferenceStatsView(stats: viewModel.recognitionStats, isListening: viewModel.isListening)
+                    Text("\(viewModel.recognitionStats.belowThresholdCount) detections below the \(Int(settings.confidenceThreshold * 100))% threshold")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+            } label: {
+                disclosureLabel("Advanced stats", summary: statsSummary)
+            }
+        }
+    }
+
+    private var spectrogramMarkers: [SpectrogramView.Marker] {
+        let history = TimeInterval(audioHandler.spectrogram?.historySeconds ?? SpectrogramEngine.historySeconds)
+        let cutoff = Date().addingTimeInterval(-history)
+        return viewModel.detections
+            .filter { $0.source == .live && $0.timestamp >= cutoff }
+            .map { SpectrogramView.Marker(id: $0.id, timestamp: $0.timestamp, label: $0.birdName) }
+    }
+
+    private func disclosureLabel(_ title: String, summary: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Spacer(minLength: 8)
+            Text(summary)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var tuningSummary: String {
+        "gain +\(Int(settings.inputGainDB)) dB · threshold \(Int(settings.confidenceThreshold * 100))%"
+    }
+
+    private var statsSummary: String {
+        guard viewModel.isListening else { return "idle" }
+        let stats = viewModel.recognitionStats
+        var parts: [String] = [stats.isBehindRealtime ? "behind" : "on pace"]
+        if let ms = stats.lastInferenceMs {
+            parts.append("\(ms) ms")
+        }
+        if stats.silentWindowsSkipped > 0 {
+            parts.append("silent \(stats.silentWindowsSkipped)")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var levelMeter: some View {
+        HStack(spacing: 8) {
+            Text("Level")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Capsule()
+                .fill(.quaternary)
+                .frame(height: 5)
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(viewModel.isListening ? Color.green : Color.secondary)
+                            .frame(width: proxy.size.width * CGFloat(min(1, max(0, audioHandler.level))))
+                    }
+                }
+            Text(String(format: "%.0f dB", viewModel.meterStats.peakDB))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(format: "Input level %.0f decibels peak", viewModel.meterStats.peakDB))
+    }
+
+    private var sensitivityControl: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text("Sensitivity")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                sensitivityControl
-                ConfidenceThresholdControls(
-                    settings: settings,
-                    stats: viewModel.recognitionStats,
-                    onApplySuggested: viewModel.applySuggestedConfidenceThreshold
-                )
-                AudioStatsView(stats: viewModel.meterStats)
-                InferenceStatsView(stats: viewModel.recognitionStats, isListening: viewModel.isListening)
-                SpectrogramView(snapshot: audioHandler.spectrogram)
-                    .layoutPriority(-1)
-                    .onAppear { audioHandler.setSpectrogramVisible(true) }
-                    .onDisappear { audioHandler.setSpectrogramVisible(false) }
-            }
-            .frame(maxWidth: .infinity)
-
-            HStack {
-                Text("Recent detections")
-                    .font(.headline)
-                if viewModel.isListening {
-                    Text(
-                        "\(viewModel.recognitionStats.belowThresholdCount) below \(Int(settings.confidenceThreshold * 100))%"
-                    )
+                Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
+                Text("+\(Int(settings.inputGainDB)) dB")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .trailing)
+            }
+            if settings.autoGainEnabled {
+                Text("Auto-gain sets the final level for inference. Sensitivity still drives the meter, spectrogram, and silence gate.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onChange(of: settings.inputGainDB) { _, gain in
+            audioHandler.setInputGain(dB: gain)
+        }
+    }
+
+    // MARK: detections column
+
+    private var detectionsColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Detections")
+                    .font(.headline)
+                if viewModel.isListening, viewModel.recognitionStats.belowThresholdCount > 0 {
+                    Text("\(viewModel.recognitionStats.belowThresholdCount) below threshold")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Clear recent") {
+                Button("Clear") {
                     viewModel.clearRecentDetections()
                 }
                 .font(.caption)
@@ -245,21 +388,19 @@ struct MonitorView: View {
             }
 
             if viewModel.detections.isEmpty {
-                Text("No birds detected yet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                setupChecklist
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(viewModel.detections) { detection in
+                    LazyVStack(spacing: 8) {
+                        ForEach(DetectionGroup.grouped(viewModel.detections)) { group in
                             DetectionCardView(
-                                detection: detection,
-                                lifetimeCount: viewModel.historyStore.lifetimeCount(for: detection.birdId),
-                                isIgnored: viewModel.isIgnored(detection),
-                                onIgnore: { viewModel.ignore(detection: detection) },
-                                onDelete: { viewModel.deleteDetection(detection) },
-                                onSubmit: { viewModel.submitToEBirdSheet(for: detection) }
+                                group: group,
+                                lifetimeCount: viewModel.historyStore.lifetimeCount(for: group.representative.birdId),
+                                isIgnored: viewModel.isIgnored(group.representative),
+                                onIgnore: { viewModel.ignore(detection: group.representative) },
+                                onDelete: { viewModel.deleteDetections(in: group) },
+                                onSubmit: { viewModel.submitToEBirdSheet(for: group.strongest) }
                             )
                         }
                     }
@@ -267,109 +408,68 @@ struct MonitorView: View {
                 }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var sensitivityControl: some View {
-        HStack(spacing: 12) {
-            Text("Sensitivity")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Slider(value: $settings.inputGainDB, in: 0...36, step: 1)
-            Text("+\(Int(settings.inputGainDB)) dB")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .trailing)
-        }
-        .onChange(of: settings.inputGainDB) { _, gain in
-            audioHandler.setInputGain(dB: gain)
-        }
-    }
-
-}
-
-extension BirdDetectionViewModel {
-    var modelStatusLabel: String {
-        switch modelState {
-        case .stopped: return "Model stopped"
-        case .loading: return "Loading model"
-        case .ready: return "Model ready"
-        case .failed: return "Model failed"
-        }
-    }
-
-    var listeningStatusLabel: String {
-        if isListening { return "Listening" }
-        if audioHandler.isPermissionDenied { return "Microphone access denied" }
-        if !audioHandler.permissionGranted { return "Microphone access required" }
-        return "Not listening"
-    }
-}
-
-struct IgnoreListTabView: View {
-    @ObservedObject var viewModel: BirdDetectionViewModel
-    @ObservedObject private var settings: AppSettings
-
-    init(viewModel: BirdDetectionViewModel) {
-        self.viewModel = viewModel
-        self.settings = viewModel.settings
-    }
-
-    private var ignoredNames: [String] {
-        settings.ignoredSpeciesNames.sorted {
-            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Suppressed detections")
-                        .font(.headline)
-
-                    if ignoredNames.isEmpty {
-                        Text("No ignored species yet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(ignoredNames, id: \.self) { name in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(name)
-                                    if let count = settings.suppressedCounts[name], count > 0 {
-                                        Text("\(count) detections suppressed")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Text("No suppressions yet")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Button("Remove") {
-                                    settings.unignore(speciesName: name, matchingSpecies: viewModel.species)
-                                    viewModel.objectWillChange.send()
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-
-                Divider()
-
-                IgnoreListSettingsView(settings: settings, species: viewModel.species)
+    private var setupChecklist: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            checklistRow(
+                done: audioHandler.permissionGranted,
+                failed: audioHandler.isPermissionDenied,
+                doneText: "Microphone access granted",
+                pendingText: "Waiting for microphone access",
+                failedText: "Microphone access denied — enable it in System Settings → Privacy & Security"
+            )
+            checklistRow(
+                done: viewModel.modelState == .ready,
+                failed: viewModel.modelState.isFailedState,
+                doneText: "BirdNET model loaded",
+                pendingText: "Loading BirdNET model…",
+                failedText: "Model failed to load — use Reload Model above"
+            )
+            checklistRow(
+                done: viewModel.isListening,
+                failed: false,
+                doneText: "Listening to the microphone",
+                pendingText: "Not listening — press Start Listening",
+                failedText: ""
+            )
+            if audioHandler.permissionGranted, viewModel.modelState == .ready, viewModel.isListening {
+                Label("Waiting for the first bird…", systemImage: "ear")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task {
-            await viewModel.reloadSpeciesIfNeeded()
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func checklistRow(
+        done: Bool,
+        failed: Bool,
+        doneText: String,
+        pendingText: String,
+        failedText: String
+    ) -> some View {
+        let symbol = done ? "checkmark.circle.fill" : (failed ? "exclamationmark.circle.fill" : "circle")
+        let color: Color = done ? .green : (failed ? .red : .secondary)
+        let text = done ? doneText : (failed ? failedText : pendingText)
+        return Label {
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(done ? .primary : .secondary)
+        } icon: {
+            Image(systemName: symbol)
+                .foregroundStyle(color)
         }
+    }
+}
+
+extension BirdNetCoreMLRecognizer.State {
+    var isFailedState: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 
@@ -393,7 +493,7 @@ struct EBirdBatchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("eBird species list")
+                Text("Session species list")
                     .font(.title2.bold())
 
                 Text(sessionWindowDescription)

@@ -71,7 +71,6 @@ final class BirdDetectionViewModel: ObservableObject {
         case monitor
         case offline
         case history
-        case ignoreList
         case eBird
         case settings
     }
@@ -334,11 +333,6 @@ final class BirdDetectionViewModel: ObservableObject {
         openMainWindowHandler?()
     }
 
-    func submitToEBird(for detection: BirdDetection) {
-        selectedTab = .eBird
-        openMainWindow()
-    }
-
     func submitToEBirdSheet(for detection: BirdDetection) {
         selectedDetection = detection
         showingEBirdForm = true
@@ -348,6 +342,18 @@ final class BirdDetectionViewModel: ObservableObject {
         detections.removeAll { $0.id == detection.id }
         historyStore.remove(id: detection.id)
         if selectedDetection?.id == detection.id {
+            selectedDetection = nil
+        }
+    }
+
+    /// Remove every detection in a grouped feed entry at once.
+    func deleteDetections(in group: DetectionGroup) {
+        let ids = Set(group.detections.map(\.id))
+        detections.removeAll { ids.contains($0.id) }
+        for id in ids {
+            historyStore.remove(id: id)
+        }
+        if let selected = selectedDetection?.id, ids.contains(selected) {
             selectedDetection = nil
         }
     }

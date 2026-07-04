@@ -11,7 +11,7 @@ struct OfflineAnalysisTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Offline analysis")
+            Text("Analyze a recording")
                 .font(.title2.bold())
 
             Text(

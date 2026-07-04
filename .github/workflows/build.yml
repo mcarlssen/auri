@@ -1,0 +1,42 @@
+# Compiles Auri.app for every pull request targeting main, so build breaks
+# surface before merge rather than in a failed release run. Ad-hoc signing
+# only — packaging and publishing live in release.yml.
+
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Verify BirdNET model is present
+        run: |
+          if [ ! -d "Auri/Resources/BirdNet/audio-model-fp16.mlpackage" ]; then
+            echo "::error::Auri/Resources/BirdNet/audio-model-fp16.mlpackage is not in the repository."
+            echo "The Core ML model is a required bundle resource. Stage it locally with"
+            echo "scripts/setup-birdnet-model.sh, then commit and push it."
+            exit 1
+          fi
+
+      - name: Build (ad-hoc signed)
+        run: |
+          xcodebuild -project Auri.xcodeproj -scheme Auri -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            build

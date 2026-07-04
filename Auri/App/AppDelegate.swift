@@ -4,11 +4,11 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var viewModel: BirdDetectionViewModel?
 
+    // Notification permission is requested on the first detection that wants to
+    // notify (see BirdDetectionViewModel.sendNotification) — asking at launch,
+    // before the app has shown any value, invites a reflexive "Don't Allow".
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
-        Task {
-            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
