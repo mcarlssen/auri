@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "AuriCore",
     platforms: [
-        .macOS(.v15)
+        .macOS("15.0")
     ],
     targets: [
         .target(
