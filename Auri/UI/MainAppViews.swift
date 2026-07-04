@@ -311,7 +311,7 @@ struct ListenView: View {
                 }
             }
 
-            Text("Top species scored each window, including those below your \(Int(settings.confidenceThreshold * 100))% threshold. Use this to judge whether to adjust it.")
+            Text("Top species scored each window, including those below your \(Int(settings.confidenceThreshold * 100))% threshold (scores under \(Int(BirdDetectionViewModel.debugMinConfidence * 100))% omitted). Use this to judge whether to adjust it.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

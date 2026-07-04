@@ -383,13 +383,19 @@ final class BirdDetectionViewModel: ObservableObject {
         modelOutputLog.removeAll()
     }
 
+    /// Scores below this are noise for debugging purposes and are omitted from
+    /// the model-output feed.
+    static let debugMinConfidence = 0.05
+
     /// Record one window's raw model scores (top species, pre-threshold) so the
     /// Debug accordion can show what is firing below the confidence threshold.
+    /// Scores under `debugMinConfidence` are dropped as noise.
     private func captureModelOutput(_ responses: [RecognitionResponse]) {
-        guard !responses.isEmpty else { return }
+        let visible = responses.filter { $0.confidence >= Self.debugMinConfidence }
+        guard !visible.isEmpty else { return }
         let threshold = settings.confidenceThreshold
         let now = Date()
-        let entries = responses.map { response in
+        let entries = visible.map { response in
             ModelOutputEntry(
                 birdName: response.bird,
                 scientificName: response.scientificName,
