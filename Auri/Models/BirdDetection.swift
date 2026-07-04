@@ -121,6 +121,20 @@ struct DetectionGroup: Identifiable {
     }
 }
 
+/// One raw species score from a single recognition window, retained for the
+/// Debug accordion's live model-output feed. Captures the threshold in effect
+/// at capture time so each row can show whether it would have passed.
+struct ModelOutputEntry: Identifiable {
+    let id = UUID()
+    let birdName: String
+    let scientificName: String
+    let confidence: Double
+    let threshold: Double
+    let timestamp: Date
+
+    var passedThreshold: Bool { confidence >= threshold }
+}
+
 struct RecognitionResponse: Decodable {
     let bird: String
     let id: Int
