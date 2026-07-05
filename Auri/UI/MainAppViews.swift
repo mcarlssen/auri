@@ -224,15 +224,19 @@ struct ListenView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject private var audioHandler: AudioHandler
     @ObservedObject private var settings: AppSettings
+    @ObservedObject private var audioClips: DetectionAudioStore
     @AppStorage("listenTuningExpanded") private var tuningExpanded = false
     @AppStorage("listenStatsExpanded") private var statsExpanded = false
     @AppStorage("listenDebugExpanded") private var debugExpanded = false
     @AppStorage("listenDetectionMode") private var detectionMode = DetectionListMode.species
+    /// Species whose card is hovered, to highlight its marker on the spectrogram.
+    @State private var highlightedBirdId: Int?
 
     init(viewModel: BirdDetectionViewModel) {
         self.viewModel = viewModel
         self.audioHandler = viewModel.audioHandler
         self.settings = viewModel.settings
+        self.audioClips = viewModel.audioClips
     }
 
     var body: some View {
@@ -383,7 +387,14 @@ struct ListenView: View {
         let cutoff = Date().addingTimeInterval(-history)
         return viewModel.detections
             .filter { $0.source == .live && $0.timestamp >= cutoff }
-            .map { SpectrogramView.Marker(id: $0.id, timestamp: $0.timestamp, label: $0.birdName) }
+            .map {
+                SpectrogramView.Marker(
+                    id: $0.id,
+                    timestamp: $0.timestamp,
+                    label: $0.birdName,
+                    isHighlighted: highlightedBirdId == $0.birdId
+                )
+            }
     }
 
     private func disclosureLabel(_ title: String, summary: String) -> some View {
@@ -517,10 +528,16 @@ struct ListenView: View {
                                 group: group,
                                 lifetimeCount: viewModel.historyStore.lifetimeCount(for: group.representative.birdId),
                                 isIgnored: viewModel.isIgnored(group.representative),
+                                hasClip: audioClips.hasClip(for: group.representative.id),
+                                isPlayingClip: audioClips.playingClipID == group.representative.id,
                                 onIgnore: { viewModel.ignore(detection: group.representative) },
                                 onDelete: { viewModel.deleteDetections(in: group) },
                                 onSubmit: { viewModel.submitToEBirdSheet(for: group.strongest) },
-                                onOpenInfo: { viewModel.openEBirdInfo(for: group.representative) }
+                                onOpenInfo: { viewModel.openEBirdInfo(for: group.representative) },
+                                onToggleClip: { audioClips.toggle(id: group.representative.id) },
+                                onHoverChanged: { hovering in
+                                    highlightedBirdId = hovering ? group.representative.birdId : nil
+                                }
                             )
                         }
                     }

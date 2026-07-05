@@ -150,6 +150,8 @@ struct SpeciesHistoryCard: View {
 
     var body: some View {
         DisclosureGroup {
+            SpeciesInfoView(scientificName: summary.scientificName)
+                .padding(.bottom, 4)
             ForEach(entries) { detection in
                 DetectionCardView(
                     detection: detection,

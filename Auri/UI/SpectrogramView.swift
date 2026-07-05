@@ -7,6 +7,7 @@ struct SpectrogramView: View {
         let id: UUID
         let timestamp: Date
         let label: String
+        var isHighlighted: Bool = false
     }
 
     let snapshot: SpectrogramEngine.Snapshot?
@@ -50,8 +51,9 @@ struct SpectrogramView: View {
                     let age = now.timeIntervalSince(marker.timestamp)
                     if age >= 0, age < history {
                         Rectangle()
-                            .fill(.orange.opacity(0.85))
-                            .frame(width: 1.5, height: proxy.size.height)
+                            .fill(.orange.opacity(marker.isHighlighted ? 1 : 0.85))
+                            .frame(width: marker.isHighlighted ? 3 : 1.5, height: proxy.size.height)
+                            .shadow(color: marker.isHighlighted ? .orange : .clear, radius: marker.isHighlighted ? 3 : 0)
                             .position(
                                 x: proxy.size.width * (1 - age / history),
                                 y: proxy.size.height / 2

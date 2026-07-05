@@ -85,6 +85,8 @@ final class BirdDetectionViewModel: ObservableObject {
     let audioHandler = AudioHandler()
     let historyStore = RecognitionHistoryStore()
     let locationProvider = LocationProvider()
+    /// Retains and plays the short audio window behind each live detection.
+    let audioClips = DetectionAudioStore()
 
     private let recognizer = BirdNetCoreMLRecognizer()
     private var speciesCooldown = SpeciesCooldown()
@@ -420,6 +422,7 @@ final class BirdDetectionViewModel: ObservableObject {
     func deleteDetection(_ detection: BirdDetection) {
         detections.removeAll { $0.id == detection.id }
         historyStore.remove(id: detection.id)
+        audioClips.remove([detection.id])
         if selectedDetection?.id == detection.id {
             selectedDetection = nil
         }
@@ -432,6 +435,7 @@ final class BirdDetectionViewModel: ObservableObject {
         for id in ids {
             historyStore.remove(id: id)
         }
+        audioClips.remove(ids)
         if let selected = selectedDetection?.id, ids.contains(selected) {
             selectedDetection = nil
         }
@@ -440,6 +444,7 @@ final class BirdDetectionViewModel: ObservableObject {
     func clearRecentDetections() {
         detections.removeAll()
         sessionSpeciesIDs.removeAll()
+        audioClips.removeAll()
         settings.recentClearedAt = Date()
         selectedDetection = nil
     }
@@ -620,7 +625,9 @@ final class BirdDetectionViewModel: ObservableObject {
                     source: source,
                     sourceFileName: sourceFileName,
                     audioOffsetSeconds: audioOffsetSeconds,
-                    notify: notify
+                    notify: notify,
+                    windowData: data,
+                    windowSampleRate: sampleRate
                 ) {
                     recordedAny = true
                 }
@@ -641,7 +648,9 @@ final class BirdDetectionViewModel: ObservableObject {
         source: DetectionSource = .live,
         sourceFileName: String? = nil,
         audioOffsetSeconds: Double? = nil,
-        notify: Bool = true
+        notify: Bool = true,
+        windowData: Data? = nil,
+        windowSampleRate: Int = 0
     ) async -> Bool {
         let ignoreList = IgnoreList(
             speciesIDs: settings.ignoredSpeciesIDs,
@@ -715,6 +724,9 @@ final class BirdDetectionViewModel: ObservableObject {
         recordDetection(detection)
         if source == .live {
             sessionSpeciesIDs.insert(response.id)
+            if let windowData {
+                audioClips.store(id: detection.id, data: windowData, sampleRate: windowSampleRate)
+            }
         }
 
         if source == .file {
