@@ -14,6 +14,10 @@ struct DetectionCardView: View {
     let onDelete: () -> Void
     let onSubmit: () -> Void
     let onOpenInfo: () -> Void
+    let hasClip: Bool
+    let isPlayingClip: Bool
+    let onToggleClip: () -> Void
+    let onHoverChanged: (Bool) -> Void
 
     @State private var isHovering = false
 
@@ -26,19 +30,27 @@ struct DetectionCardView: View {
         lifetimeCount: Int? = nil,
         isIgnored: Bool,
         timeDisplay: TimeDisplay = .relative,
+        hasClip: Bool = false,
+        isPlayingClip: Bool = false,
         onIgnore: @escaping () -> Void,
         onDelete: @escaping () -> Void,
         onSubmit: @escaping () -> Void,
-        onOpenInfo: @escaping () -> Void = {}
+        onOpenInfo: @escaping () -> Void = {},
+        onToggleClip: @escaping () -> Void = {},
+        onHoverChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.group = group
         self.lifetimeCount = lifetimeCount
         self.isIgnored = isIgnored
         self.timeDisplay = timeDisplay
+        self.hasClip = hasClip
+        self.isPlayingClip = isPlayingClip
         self.onIgnore = onIgnore
         self.onDelete = onDelete
         self.onSubmit = onSubmit
         self.onOpenInfo = onOpenInfo
+        self.onToggleClip = onToggleClip
+        self.onHoverChanged = onHoverChanged
     }
 
     /// Single-detection card (History, file analysis) — wraps one detection.
@@ -47,20 +59,28 @@ struct DetectionCardView: View {
         lifetimeCount: Int? = nil,
         isIgnored: Bool,
         timeDisplay: TimeDisplay = .relative,
+        hasClip: Bool = false,
+        isPlayingClip: Bool = false,
         onIgnore: @escaping () -> Void,
         onDelete: @escaping () -> Void,
         onSubmit: @escaping () -> Void,
-        onOpenInfo: @escaping () -> Void = {}
+        onOpenInfo: @escaping () -> Void = {},
+        onToggleClip: @escaping () -> Void = {},
+        onHoverChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.init(
             group: DetectionGroup(detections: [detection]),
             lifetimeCount: lifetimeCount,
             isIgnored: isIgnored,
             timeDisplay: timeDisplay,
+            hasClip: hasClip,
+            isPlayingClip: isPlayingClip,
             onIgnore: onIgnore,
             onDelete: onDelete,
             onSubmit: onSubmit,
-            onOpenInfo: onOpenInfo
+            onOpenInfo: onOpenInfo,
+            onToggleClip: onToggleClip,
+            onHoverChanged: onHoverChanged
         )
     }
 
@@ -137,6 +157,17 @@ struct DetectionCardView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
+                if hasClip {
+                    Button(action: onToggleClip) {
+                        Image(systemName: isPlayingClip ? "stop.fill" : "play.fill")
+                            .font(.system(size: 10))
+                            .frame(width: 20, height: 18)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isPlayingClip ? "Stop" : "Play the audio that triggered this detection")
+                    .accessibilityLabel(isPlayingClip ? "Stop clip" : "Play detection clip")
+                }
                 confidenceBar
                 Text(String(format: "%.0f%%", group.peakConfidence * 100))
                     .font(.caption.weight(.semibold).monospacedDigit())
@@ -186,6 +217,7 @@ struct DetectionCardView: View {
             withAnimation(.easeOut(duration: 0.12)) {
                 isHovering = hovering
             }
+            onHoverChanged(hovering)
         }
         .contextMenu {
             Button("View on eBird", action: onOpenInfo)
