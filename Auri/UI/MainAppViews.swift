@@ -11,16 +11,12 @@ struct MainWindowView: View {
                 .tag(BirdDetectionViewModel.MainWindowTab.monitor)
 
             HistoryTabView(viewModel: viewModel)
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tabItem { Label("Heard", systemImage: "bird") }
                 .tag(BirdDetectionViewModel.MainWindowTab.history)
 
             OfflineAnalysisTabView(viewModel: viewModel)
                 .tabItem { Label("Analyze File", systemImage: "doc.text.magnifyingglass") }
                 .tag(BirdDetectionViewModel.MainWindowTab.offline)
-
-            EBirdBatchView(viewModel: viewModel)
-                .tabItem { Label("Session List", systemImage: "bird") }
-                .tag(BirdDetectionViewModel.MainWindowTab.eBird)
 
             SettingsView(viewModel: viewModel, embedded: true)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
@@ -217,6 +213,13 @@ struct ListenStatusPill: View {
     }
 }
 
+/// Whether the Listen feed shows one card per unique species (default) or a
+/// chronological run-grouped timeline.
+enum DetectionListMode: String {
+    case species
+    case timeline
+}
+
 struct ListenView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject private var audioHandler: AudioHandler
@@ -224,6 +227,7 @@ struct ListenView: View {
     @AppStorage("listenTuningExpanded") private var tuningExpanded = false
     @AppStorage("listenStatsExpanded") private var statsExpanded = false
     @AppStorage("listenDebugExpanded") private var debugExpanded = false
+    @AppStorage("listenDetectionMode") private var detectionMode = DetectionListMode.species
 
     init(viewModel: BirdDetectionViewModel) {
         self.viewModel = viewModel
@@ -360,6 +364,20 @@ struct ListenView: View {
         )
     }
 
+    /// Species mode dedupes the whole session by species (unique-first, most
+    /// recent on top); Timeline mode keeps the chronological run grouping.
+    private var detectionGroups: [DetectionGroup] {
+        switch detectionMode {
+        case .timeline:
+            return DetectionGroup.grouped(viewModel.detections)
+        case .species:
+            let bySpecies = Dictionary(grouping: viewModel.detections, by: { $0.birdId })
+            return bySpecies.values
+                .map { DetectionGroup(detections: $0.sorted { $0.timestamp > $1.timestamp }) }
+                .sorted { $0.lastSeen > $1.lastSeen }
+        }
+    }
+
     private var spectrogramMarkers: [SpectrogramView.Marker] {
         let history = TimeInterval(audioHandler.spectrogram?.historySeconds ?? SpectrogramEngine.historySeconds)
         let cutoff = Date().addingTimeInterval(-history)
@@ -459,13 +477,8 @@ struct ListenView: View {
     private var detectionsColumn: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Detections")
+                Text(detectionMode == .species ? "Species this session" : "Detections")
                     .font(.headline)
-                if viewModel.isListening, viewModel.recognitionStats.belowThresholdCount > 0 {
-                    Text("\(viewModel.recognitionStats.belowThresholdCount) below threshold")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
                 Button("Clear") {
                     viewModel.clearRecentDetections()
@@ -474,13 +487,32 @@ struct ListenView: View {
                 .disabled(viewModel.detections.isEmpty)
             }
 
+            Picker("View", selection: $detectionMode) {
+                Text("Species").tag(DetectionListMode.species)
+                Text("Timeline").tag(DetectionListMode.timeline)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if viewModel.isListening, viewModel.recognitionStats.belowThresholdCount > 0 {
+                Button {
+                    withAnimation { debugExpanded = true }
+                } label: {
+                    Text("\(viewModel.recognitionStats.belowThresholdCount) below threshold — see Debug")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Show the live model output, including detections below your threshold")
+            }
+
             if viewModel.detections.isEmpty {
                 setupChecklist
                 Spacer()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(DetectionGroup.grouped(viewModel.detections)) { group in
+                        ForEach(detectionGroups) { group in
                             DetectionCardView(
                                 group: group,
                                 lifetimeCount: viewModel.historyStore.lifetimeCount(for: group.representative.birdId),

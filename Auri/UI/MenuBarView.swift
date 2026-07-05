@@ -10,8 +10,20 @@ struct MenuBarView: View {
         self.audioHandler = viewModel.audioHandler
     }
 
+    /// Most-recent detections deduped by species, so the popover surfaces
+    /// unique birds rather than repeats of the same one.
     private var recentDetections: [BirdDetection] {
-        Array(viewModel.detections.prefix(3))
+        var seen = Set<Int>()
+        var result: [BirdDetection] = []
+        for detection in viewModel.detections where seen.insert(detection.birdId).inserted {
+            result.append(detection)
+            if result.count == 3 { break }
+        }
+        return result
+    }
+
+    private var sessionSpeciesCount: Int {
+        viewModel.sessionSpecies.count
     }
 
     var body: some View {
@@ -30,6 +42,10 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                Text("\(sessionSpeciesCount) species this session")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 4) {
                     ForEach(recentDetections) { detection in
                         detectionRow(detection)

@@ -101,6 +101,8 @@ final class BirdDetectionViewModel: ObservableObject {
     static let unusualSpeciesConfidenceFloor = 0.75
     private var debugCaptureEnabled = false
     private let maxModelOutputEntries = 150
+    /// Species heard this session (since last clear), for new-species detection.
+    private var sessionSpeciesIDs: Set<Int> = []
 
     /// Lowercased scientific names expected in the current region, mirrored from
     /// `EBirdRegionalService` so detections and the live model-output feed can be
@@ -422,6 +424,7 @@ final class BirdDetectionViewModel: ObservableObject {
 
     func clearRecentDetections() {
         detections.removeAll()
+        sessionSpeciesIDs.removeAll()
         settings.recentClearedAt = Date()
         selectedDetection = nil
     }
@@ -655,6 +658,10 @@ final class BirdDetectionViewModel: ObservableObject {
             }
         }
 
+        // "New this session" = first live detection of this species since the
+        // last clear; drives the optional new-species-only notification mode.
+        let isNewThisSession = source == .live && !sessionSpeciesIDs.contains(response.id)
+
         let detection = BirdDetection(
             birdName: response.bird,
             scientificName: response.scientificName,
@@ -667,6 +674,9 @@ final class BirdDetectionViewModel: ObservableObject {
             rarity: rarity
         )
         recordDetection(detection)
+        if source == .live {
+            sessionSpeciesIDs.insert(response.id)
+        }
 
         if source == .file {
             fileAnalysisCooldown.markQualified(
@@ -677,6 +687,11 @@ final class BirdDetectionViewModel: ObservableObject {
         }
 
         var shouldNotify = notify
+        if shouldNotify, source == .live, settings.notifyNewSpeciesOnly, !isNewThisSession {
+            // In new-species-only mode, repeats of a species already heard this
+            // session don't notify.
+            shouldNotify = false
+        }
         if shouldNotify {
             if source == .file {
                 shouldNotify = rateLimiter.shouldAllow(maxPerHour: settings.maxNotificationsPerHour)

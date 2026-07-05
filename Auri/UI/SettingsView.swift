@@ -164,7 +164,11 @@ struct SettingsView: View {
 
                 Section("Notifications") {
                     Toggle("Enable notifications", isOn: $settings.notificationsEnabled)
+                    Toggle("Only notify for new species", isOn: $settings.notifyNewSpeciesOnly)
+                        .disabled(!settings.notificationsEnabled)
+                        .help("Notify only the first time a species is heard this session, not on repeats.")
                     Toggle("Play sound", isOn: $settings.notificationSoundEnabled)
+                        .disabled(!settings.notificationsEnabled)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Per-species cooldown: \(formatCooldown(settings.perSpeciesCooldownSeconds))")
