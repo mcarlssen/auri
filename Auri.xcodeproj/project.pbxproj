@@ -15,6 +15,7 @@
 		A10000000000000000000006 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Settings.swift */; };
 		A10000000000000000000007 /* Cooldown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* Cooldown.swift */; };
 		A10000000000000000000008 /* IgnoreList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* IgnoreList.swift */; };
+		A10000000000000000000100 /* DetectionCorroborator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000100 /* DetectionCorroborator.swift */; };
 		A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* BirdDetectionViewModel.swift */; };
 		A10000000000000000000012 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* MenuBarView.swift */; };
 		A10000000000000000000013 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* SettingsView.swift */; };
@@ -57,6 +58,7 @@
 		A20000000000000000000006 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* Cooldown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cooldown.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* IgnoreList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoreList.swift; sourceTree = "<group>"; };
+		A20000000000000000000100 /* DetectionCorroborator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionCorroborator.swift; sourceTree = "<group>"; };
 		A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdNetCoreMLRecognizer.swift; sourceTree = "<group>"; };
 		A20000000000000000000032 /* audio-model-fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "audio-model-fp16.mlpackage"; sourceTree = "<group>"; };
 		A20000000000000000000033 /* en_us.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = en_us.txt; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				A20000000000000000000006 /* Settings.swift */,
 				A20000000000000000000007 /* Cooldown.swift */,
 				A20000000000000000000008 /* IgnoreList.swift */,
+				A20000000000000000000100 /* DetectionCorroborator.swift */,
 				A20000000000000000000019 /* LaunchAtLoginManager.swift */,
 				A20000000000000000000021 /* EBirdSubmission.swift */,
 				A20000000000000000000035 /* RecognitionLogger.swift */,
@@ -327,6 +330,7 @@
 				A10000000000000000000006 /* Settings.swift in Sources */,
 				A10000000000000000000007 /* Cooldown.swift in Sources */,
 				A10000000000000000000008 /* IgnoreList.swift in Sources */,
+				A10000000000000000000100 /* DetectionCorroborator.swift in Sources */,
 				A10000000000000000000029 /* BirdNetCoreMLRecognizer.swift in Sources */,
 				A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */,
 				A10000000000000000000012 /* MenuBarView.swift in Sources */,

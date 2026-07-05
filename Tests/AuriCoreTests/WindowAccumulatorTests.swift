@@ -58,24 +58,24 @@ final class WindowAccumulatorTests: XCTestCase {
         accumulator.silenceGateEnabled = true
         accumulator.silenceGateThresholdLinear = 0.5
 
-        accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet, below threshold
-        accumulator.append(floatsData([0.6, 0, 0, 0])) // loud, above threshold
+        accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet, RMS below threshold
+        accumulator.append(floatsData([0.6, 0.6, 0.6, 0.6])) // loud, RMS above threshold
 
         let window = accumulator.nextWindow()
-        XCTAssertEqual(floats(window!), [0.6, 0, 0, 0])
+        XCTAssertEqual(floats(window!), [0.6, 0.6, 0.6, 0.6])
         XCTAssertEqual(accumulator.silentWindowsSkipped, 1)
     }
 
-    func testSilenceGateUsesPeakMagnitudeSoNegativePeakAlsoPasses() {
+    func testSilenceGateUsesRMSSoSustainedNegativeEnergyAlsoPasses() {
         var accumulator = WindowAccumulator(windowSampleCount: 4, hopByteCount: 16)
         accumulator.silenceGateEnabled = true
         accumulator.silenceGateThresholdLinear = 0.5
 
         accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet
-        accumulator.append(floatsData([-0.6, 0, 0, 0])) // loud negative peak
+        accumulator.append(floatsData([-0.6, -0.6, -0.6, -0.6])) // loud, RMS is sign-agnostic
 
         let window = accumulator.nextWindow()
-        XCTAssertEqual(floats(window!), [-0.6, 0, 0, 0])
+        XCTAssertEqual(floats(window!), [-0.6, -0.6, -0.6, -0.6])
         XCTAssertEqual(accumulator.silentWindowsSkipped, 1)
     }
 
@@ -93,7 +93,7 @@ final class WindowAccumulatorTests: XCTestCase {
         accumulator.silenceGateEnabled = true
         accumulator.silenceGateThresholdLinear = 0.5
         accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1]))
-        accumulator.append(floatsData([0.6, 0, 0, 0]))
+        accumulator.append(floatsData([0.6, 0.6, 0.6, 0.6]))
         _ = accumulator.nextWindow()
         XCTAssertEqual(accumulator.silentWindowsSkipped, 1)
 

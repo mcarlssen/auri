@@ -19,36 +19,63 @@ enum AudioFileLoader {
     static let modelSampleRate = BirdNetCoreMLRecognizer.modelSampleRate
     static let windowSamples = BirdNetCoreMLRecognizer.windowSamples
 
-    /// Load an audio file, downmix to mono, resample to 48 kHz.
+    /// Load an audio file, downmix to mono, resample to 48 kHz. `AVAudioConverter`
+    /// performs anti-aliased sample-rate conversion (a naive linear resample would
+    /// alias high-frequency energy into the analyzed band) and the channel downmix.
     static func loadSamples(from url: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: url)
-        let format = file.processingFormat
+        let sourceFormat = file.processingFormat
 
-        guard format.channelCount >= 1 else {
+        guard sourceFormat.channelCount >= 1 else {
             throw AudioFileLoaderError.noChannels
         }
 
-        let frameCount = AVAudioFrameCount(file.length)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+        let sourceFrameCount = AVAudioFrameCount(file.length)
+        guard sourceFrameCount > 0 else { return [] }
+        guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: sourceFrameCount) else {
             throw AudioFileLoaderError.bufferAllocationFailed
         }
-        try file.read(into: buffer)
-        guard let channelData = buffer.floatChannelData else {
+        try file.read(into: sourceBuffer)
+
+        // Destination: mono Float32 @ 48 kHz. AVAudioConverter handles both the
+        // rate conversion (with anti-alias filtering) and the channel downmix.
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(modelSampleRate),
+            channels: 1,
+            interleaved: false
+        ), let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
             throw AudioFileLoaderError.noFloatData
         }
 
-        let frames = Int(buffer.frameLength)
-        var mono = [Float](repeating: 0, count: frames)
-        let channels = Int(format.channelCount)
-        for channel in 0..<channels {
-            let data = channelData[channel]
-            for index in 0..<frames {
-                mono[index] += data[index] / Float(channels)
-            }
+        // Size the destination by the sample-rate ratio, with a small margin for
+        // the converter's internal latency.
+        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
+        let targetCapacity = AVAudioFrameCount((Double(sourceBuffer.frameLength) * ratio).rounded(.up)) + 1
+        guard let targetBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: targetCapacity) else {
+            throw AudioFileLoaderError.bufferAllocationFailed
         }
 
-        let sourceRate = Int(format.sampleRate.rounded())
-        return resample(mono, from: sourceRate, to: modelSampleRate)
+        // Feed the whole source buffer once, then report the input as drained.
+        var providedInput = false
+        var conversionError: NSError?
+        let status = converter.convert(to: targetBuffer, error: &conversionError) { _, inputStatus in
+            if providedInput {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            providedInput = true
+            inputStatus.pointee = .haveData
+            return sourceBuffer
+        }
+
+        guard status != .error, conversionError == nil,
+              let channelData = targetBuffer.floatChannelData else {
+            throw AudioFileLoaderError.noFloatData
+        }
+
+        let frames = Int(targetBuffer.frameLength)
+        return Array(UnsafeBufferPointer(start: channelData[0], count: frames))
     }
 
     /// Split samples into 3-second windows. The last window is zero-padded if needed.
@@ -78,23 +105,5 @@ enum AudioFileLoader {
         samples.withUnsafeBufferPointer { buffer in
             Data(buffer: buffer)
         }
-    }
-
-    private static func resample(_ samples: [Float], from sourceRate: Int, to targetRate: Int) -> [Float] {
-        guard sourceRate != targetRate, !samples.isEmpty else { return samples }
-
-        let ratio = Double(targetRate) / Double(sourceRate)
-        let targetCount = max(1, Int((Double(samples.count) * ratio).rounded()))
-        var output = [Float](repeating: 0, count: targetCount)
-
-        for index in 0..<targetCount {
-            let sourcePosition = Double(index) / ratio
-            let left = Int(sourcePosition.rounded(.down))
-            let right = min(left + 1, samples.count - 1)
-            let fraction = Float(sourcePosition - Double(left))
-            output[index] = samples[left] * (1 - fraction) + samples[right] * fraction
-        }
-
-        return output
     }
 }

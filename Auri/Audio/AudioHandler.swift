@@ -426,9 +426,15 @@ final class AudioHandler: ObservableObject {
         guard inputGainLinear != 1 else { return }
         var gain = inputGainLinear
         vDSP_vsmul(samples, 1, &gain, &samples, 1, vDSP_Length(samples.count))
-        var lower: Float = -1
-        var upper: Float = 1
-        vDSP_vclip(samples, 1, &lower, &upper, &samples, 1, vDSP_Length(samples.count))
+
+        // Peak-safe: if the user gain pushed any sample past ±1, scale the whole
+        // buffer back down so the max magnitude is exactly 1.0. This preserves the
+        // waveform shape instead of hard-clipping, which distorts the model input.
+        var peak: Float = 0
+        vDSP_maxmgv(samples, 1, &peak, vDSP_Length(samples.count))
+        guard peak > 1 else { return }
+        var scale = 1 / peak
+        vDSP_vsmul(samples, 1, &scale, &samples, 1, vDSP_Length(samples.count))
     }
 
     private func publishStats(from samples: [Float]) {

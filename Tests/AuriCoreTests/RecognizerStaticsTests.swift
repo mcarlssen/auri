@@ -86,10 +86,17 @@ final class RecognizerStaticsTests: XCTestCase {
 
     func testResampleFirstElementPreserved() {
         let samples: [Float] = [5, 6, 7, 8]
+        // Upsampling is plain linear interpolation, so the first sample is copied exactly.
         let up = BirdNetCoreMLRecognizer.resample(samples, from: 48_000, to: 96_000)
-        let down = BirdNetCoreMLRecognizer.resample(samples, from: 96_000, to: 48_000)
         XCTAssertEqual(up.first, samples.first)
-        XCTAssertEqual(down.first, samples.first)
+
+        // Downsampling now low-pass filters before decimating, so an arbitrary
+        // signal's leading sample becomes a band-limited blend rather than an exact
+        // copy. A constant signal has no energy to filter (unit DC gain plus edge
+        // clamping), so its first sample is preserved.
+        let constant = [Float](repeating: 5, count: 100)
+        let down = BirdNetCoreMLRecognizer.resample(constant, from: 96_000, to: 48_000)
+        XCTAssertEqual(down.first ?? 0, 5, accuracy: 1e-4)
     }
 
     func testResampleConstantInputStaysConstant() {
