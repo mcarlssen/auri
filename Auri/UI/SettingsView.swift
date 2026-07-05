@@ -194,8 +194,31 @@ struct SettingsView: View {
                             viewModel.syncLocationAccess()
                         }
 
+                    Toggle("Enter location manually", isOn: $settings.manualLocationEnabled)
+                        .onChange(of: settings.manualLocationEnabled) { _, _ in
+                            viewModel.syncLocationAccess()
+                        }
+                        .disabled(!settings.locationFilteringEnabled)
+
+                    if settings.manualLocationEnabled {
+                        HStack {
+                            TextField("Latitude", value: $settings.manualLatitude, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Longitude", value: $settings.manualLongitude, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Apply") { viewModel.syncLocationAccess() }
+                        }
+                        .disabled(!settings.locationFilteringEnabled)
+
+                        Text("Decimal degrees, e.g. 47.60, -122.33. Manual location skips the system location permission prompt.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     LocationStatusView(
                         isEnabled: settings.locationFilteringEnabled,
+                        manualModeEnabled: settings.manualLocationEnabled,
+                        manualCoordinateText: manualCoordinateText,
                         location: locationProvider.lastKnownLocation,
                         authorizationStatus: locationProvider.authorizationStatus,
                         regionalLabel: viewModel.regionalLabel,
@@ -204,7 +227,7 @@ struct SettingsView: View {
 
                     SecureField("eBird API key", text: $settings.eBirdApiKey)
 
-                    Text("BirdNET's audio model does not accept location input. When enabled, Auri uses your location and eBird regional checklists to filter out-of-range false positives. A species not expected in your area is hidden unless it scores at least \(Int(BirdDetectionViewModel.unusualSpeciesConfidenceFloor * 100))% confidence; expected species are unaffected. Regional filtering needs a free API key from ebird.org/api/keygen — without one it has no effect.")
+                    Text("BirdNET's audio model does not accept location input. When enabled, Auri uses your location (detected or entered manually) and eBird regional checklists to filter out-of-range false positives — from both saved detections and the live model output. A species not expected in your area is hidden unless it scores at least \(Int(BirdDetectionViewModel.unusualSpeciesConfidenceFloor * 100))% confidence; expected species are unaffected. Regional filtering needs a free API key from ebird.org/api/keygen — without one it has no effect.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -278,6 +301,17 @@ struct SettingsView: View {
         settings.ignoredSpeciesNames.sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
+    }
+
+    /// Formatted manual coordinate for the status view, or nil when the entered
+    /// values aren't a usable location.
+    private var manualCoordinateText: String? {
+        let lat = settings.manualLatitude
+        let lon = settings.manualLongitude
+        guard (-90...90).contains(lat), (-180...180).contains(lon), !(lat == 0 && lon == 0) else {
+            return nil
+        }
+        return String(format: "%.5f, %.5f", lat, lon)
     }
 
     private func formatCooldown(_ seconds: Double) -> String {

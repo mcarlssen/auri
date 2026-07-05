@@ -31,7 +31,7 @@ struct MainWindowView: View {
             EBirdFormView(
                 detection: viewModel.selectedDetection,
                 species: viewModel.species,
-                prefilledCoordinate: viewModel.locationProvider.lastKnownLocation?.coordinate
+                prefilledCoordinate: viewModel.effectiveLocation?.coordinate
             )
         }
     }
