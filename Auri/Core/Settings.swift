@@ -187,6 +187,12 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Surface species reported to eBird near the user that they have not
+    /// recorded themselves. Depends on regional filtering being enabled.
+    @Published var expectedNearbyEnabled: Bool {
+        didSet { save() }
+    }
+
     /// Use a manually entered coordinate for regional filtering instead of Core
     /// Location. Lets regional filtering work without granting the system location
     /// permission.
@@ -329,6 +335,7 @@ final class AppSettings: ObservableObject {
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
         perSpeciesCooldownSeconds = defaults.object(forKey: "perSpeciesCooldownSeconds") as? Double ?? 3600
         locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
+        expectedNearbyEnabled = defaults.object(forKey: "expectedNearbyEnabled") as? Bool ?? true
         manualLocationEnabled = defaults.object(forKey: "manualLocationEnabled") as? Bool ?? false
         manualLatitude = defaults.object(forKey: "manualLatitude") as? Double ?? 0
         manualLongitude = defaults.object(forKey: "manualLongitude") as? Double ?? 0
@@ -407,6 +414,7 @@ final class AppSettings: ObservableObject {
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
         defaults.set(perSpeciesCooldownSeconds, forKey: "perSpeciesCooldownSeconds")
         defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")
+        defaults.set(expectedNearbyEnabled, forKey: "expectedNearbyEnabled")
         defaults.set(manualLocationEnabled, forKey: "manualLocationEnabled")
         defaults.set(manualLatitude, forKey: "manualLatitude")
         defaults.set(manualLongitude, forKey: "manualLongitude")

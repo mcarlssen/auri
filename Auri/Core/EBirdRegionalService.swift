@@ -35,6 +35,13 @@ actor EBirdRegionalService {
     /// intersecting the regional species-code list with the taxonomy.
     private var regionalScientificNames: Set<String> = []
 
+    /// Cache for the "recently reported near you" feed powering the expected-nearby
+    /// list. Kept on its own coarse TTL because recent sightings change slowly
+    /// while the caller polls often, so refetching every poll would be wasteful.
+    private var nearbyObservations: [NearbyObservation] = []
+    private var lastNearbyRefreshAt: Date?
+    private var lastNearbyRegion: String?
+
     func currentRegionLabel() -> String? {
         regionLabel
     }
@@ -70,6 +77,44 @@ actor EBirdRegionalService {
         regionLabel = regionCode
         lastRefreshLocation = location
         RegionLog("region \(regionCode): \(speciesCodes.count) species codes, \(regionalScientificNames.count) matched to taxonomy")
+    }
+
+    /// Species reported to eBird near the user within the last 14 days,
+    /// deduplicated by scientific name. Returns the cache when it is fresh and
+    /// refreshes it only when empty, older than `maxAgeHours`, or the resolved
+    /// region changed — the TTL keeps the frequently-polling expected-nearby loop
+    /// from hammering the endpoint.
+    ///
+    /// Region resolution is owned by `refreshIfNeeded`, so this returns `[]` until
+    /// a region has been resolved, and `[]` without a usable API key. On a failed
+    /// refresh the previous cache is returned unchanged so a transient error does
+    /// not blank the list.
+    func nearbySnapshot(apiKey: String, maxAgeHours: Double = 6) async -> [NearbyObservation] {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return [] }
+        guard let regionCode = regionLabel else { return [] }
+
+        let regionChanged = lastNearbyRegion != regionCode
+        let isStale: Bool
+        if let last = lastNearbyRefreshAt {
+            isStale = Date().timeIntervalSince(last) > maxAgeHours * 3600
+        } else {
+            isStale = true
+        }
+        if !regionChanged, !isStale, !nearbyObservations.isEmpty {
+            return nearbyObservations
+        }
+
+        guard let observations = await fetchNearbyObservations(regionCode: regionCode, apiKey: trimmedKey) else {
+            RegionLog("region \(regionCode): failed to fetch recent nearby observations")
+            return nearbyObservations
+        }
+
+        nearbyObservations = observations
+        lastNearbyRefreshAt = Date()
+        lastNearbyRegion = regionCode
+        RegionLog("region \(regionCode): \(observations.count) recent nearby species")
+        return nearbyObservations
     }
 
     /// Public resolver for the eBird 6-letter species code, used to link to a
@@ -183,6 +228,61 @@ actor EBirdRegionalService {
             return nil
         }
         return codes
+    }
+
+    private func fetchNearbyObservations(regionCode: String, apiKey: String) async -> [NearbyObservation]? {
+        var components = URLComponents(string: "https://api.ebird.org/v2/data/obs/\(regionCode)/recent")
+        components?.queryItems = [URLQueryItem(name: "back", value: "14")]
+        guard let url = components?.url else { return nil }
+
+        guard let data = await fetch(url: url, apiKey: apiKey),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return nil
+        }
+
+        // eBird's obsDt is "yyyy-MM-dd HH:mm", but the time is dropped for
+        // date-only reports; try the full format first, then the date-only one,
+        // and leave the date nil when neither parses.
+        let dateTimeFormatter = DateFormatter()
+        dateTimeFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateTimeFormatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let dateOnlyFormatter = DateFormatter()
+        dateOnlyFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateOnlyFormatter.dateFormat = "yyyy-MM-dd"
+
+        func parseObsDate(_ raw: String?) -> Date? {
+            guard let raw, !raw.isEmpty else { return nil }
+            return dateTimeFormatter.date(from: raw) ?? dateOnlyFormatter.date(from: raw)
+        }
+
+        // Deduplicate by scientific name, keeping the most recent sighting; a
+        // real date always beats a missing one.
+        var latestBySciName: [String: NearbyObservation] = [:]
+        for row in rows {
+            guard let commonName = row["comName"] as? String,
+                  let scientific = (row["sciName"] as? String)?.lowercased() else {
+                continue
+            }
+            let observation = NearbyObservation(
+                commonName: commonName,
+                scientificName: scientific,
+                lastObservedAt: parseObsDate(row["obsDt"] as? String),
+                locationName: row["locName"] as? String
+            )
+            if let existing = latestBySciName[scientific] {
+                let keepNew: Bool
+                switch (observation.lastObservedAt, existing.lastObservedAt) {
+                case let (new?, old?): keepNew = new > old
+                case (_?, nil): keepNew = true
+                case (nil, _?): keepNew = false
+                case (nil, nil): keepNew = false
+                }
+                if keepNew { latestBySciName[scientific] = observation }
+            } else {
+                latestBySciName[scientific] = observation
+            }
+        }
+        return Array(latestBySciName.values)
     }
 
     private func fetch(url: URL, apiKey: String) async -> Data? {

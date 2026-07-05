@@ -243,6 +243,10 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if settings.locationFilteringEnabled {
+                        Toggle("Show species heard nearby that you haven't recorded", isOn: $settings.expectedNearbyEnabled)
+                    }
+
                     EBirdAttributionView()
                 }
 
