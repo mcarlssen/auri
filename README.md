@@ -22,6 +22,8 @@ Auri is a macOS menu bar app that listens for bird calls in real time, identifie
 
 The main window has tabs for Monitor, Offline, History, Ignore List, eBird, and Settings. The menu bar extra provides quick status and controls.
 
+<img width="1243" height="751" alt="auri_newdash" src="https://github.com/user-attachments/assets/1f5f2c18-fadf-4e7c-8838-6bcbea4a493f" />
+
 ## Getting started
 
 ### Build from source
