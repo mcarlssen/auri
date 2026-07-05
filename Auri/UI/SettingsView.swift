@@ -127,6 +127,14 @@ struct SettingsView: View {
                             viewModel.applyDetectionPipelineSettings()
                         }
 
+                        Toggle("Require multi-window confirmation", isOn: $settings.corroborationEnabled)
+
+                        if settings.corroborationEnabled {
+                            Text("A species must clear your threshold in two overlapping windows before it's reported, trading ~1.5 s of latency for fewer isolated false positives. Needs window overlap; with overlap off a single window still qualifies.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
                         Toggle("Skip silent windows", isOn: $settings.silenceSkipEnabled)
                             .onChange(of: settings.silenceSkipEnabled) { _, _ in
                                 viewModel.applySilenceGate()

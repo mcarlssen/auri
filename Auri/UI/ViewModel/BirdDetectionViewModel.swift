@@ -664,14 +664,15 @@ final class BirdDetectionViewModel: ObservableObject {
             return false
         }
 
-        // LIVE audio: require the species to clear threshold across multiple
-        // overlapping windows before it qualifies, which drops isolated
-        // single-window false positives. With overlap off there is only one look
-        // per window, so the requirement collapses to 1 (pass-through) and nothing
-        // is suppressed. The .file path uses its own timeline cooldown, so leave
-        // it — and its confidence — untouched.
+        // LIVE audio, opt-in only: when corroboration is enabled, require the
+        // species to clear threshold across multiple overlapping windows before it
+        // qualifies, dropping isolated single-window false positives. With overlap
+        // off there is only one look per window, so the requirement collapses to 1
+        // (pass-through). When the setting is off (the default) a single window is
+        // enough, so brief and isolated calls surface immediately. The .file path
+        // uses its own timeline cooldown, so leave it — and its confidence — untouched.
         var effectiveConfidence = response.confidence
-        if source == .live {
+        if source == .live, settings.corroborationEnabled {
             let hopSamples = settings.detectionOverlap.hopSamples(
                 windowSamples: BirdNetCoreMLRecognizer.windowSamples
             )

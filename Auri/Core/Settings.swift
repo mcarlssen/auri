@@ -156,6 +156,15 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Require a live detection to clear threshold in more than one overlapping
+    /// window before it surfaces. Off by default: a single window is enough, so
+    /// brief and isolated calls are reported immediately. When on (and window
+    /// overlap is enabled) it trades some detection latency for fewer isolated
+    /// single-window false positives.
+    @Published var corroborationEnabled: Bool {
+        didSet { save() }
+    }
+
     /// Skip BirdNET inference for windows whose peak stays below the silence threshold.
     @Published var silenceSkipEnabled: Bool {
         didSet { save() }
@@ -314,6 +323,7 @@ final class AppSettings: ObservableObject {
         detectionOverlap = DetectionOverlap(
             rawValue: defaults.string(forKey: "detectionOverlap") ?? ""
         ) ?? .half
+        corroborationEnabled = defaults.object(forKey: "corroborationEnabled") as? Bool ?? false
         silenceSkipEnabled = defaults.object(forKey: "silenceSkipEnabled") as? Bool ?? true
         silenceSkipThresholdDB = defaults.object(forKey: "silenceSkipThresholdDB") as? Double ?? -65
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
@@ -391,6 +401,7 @@ final class AppSettings: ObservableObject {
         defaults.set(confidenceThreshold, forKey: "confidenceThreshold")
         defaults.set(autoGainEnabled, forKey: "autoGainEnabled")
         defaults.set(detectionOverlap.rawValue, forKey: "detectionOverlap")
+        defaults.set(corroborationEnabled, forKey: "corroborationEnabled")
         defaults.set(silenceSkipEnabled, forKey: "silenceSkipEnabled")
         defaults.set(silenceSkipThresholdDB, forKey: "silenceSkipThresholdDB")
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
