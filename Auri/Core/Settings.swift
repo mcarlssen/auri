@@ -222,6 +222,26 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Opt-in once-daily summary of yesterday's live detections. Off by default:
+    /// notification etiquette — Auri never adds a recurring notification unasked.
+    @Published var digestEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Earliest local hour (0–23) the daily digest may be delivered. It is sent
+    /// on the first runtime tick at or after this hour.
+    @Published var digestHour: Int {
+        didSet { save() }
+    }
+
+    /// "yyyy-MM-dd" of the day the last digest SUMMARIZED (yesterday at send
+    /// time), not the send date. Prevents a second digest for the same day; a
+    /// quiet day still records its key so it is never retried. Empty until the
+    /// first digest is evaluated.
+    @Published var lastDigestDayKey: String {
+        didSet { save() }
+    }
+
     @Published var ignoredSpeciesIDs: Set<Int> {
         didSet { save() }
     }
@@ -337,6 +357,9 @@ final class AppSettings: ObservableObject {
         notifyNewSpeciesOnly = defaults.object(forKey: "notifyNewSpeciesOnly") as? Bool ?? true
         notificationSoundEnabled = defaults.object(forKey: "notificationSoundEnabled") as? Bool ?? true
         maxNotificationsPerHour = defaults.object(forKey: "maxNotificationsPerHour") as? Int ?? 30
+        digestEnabled = defaults.object(forKey: "digestEnabled") as? Bool ?? false
+        digestHour = defaults.object(forKey: "digestHour") as? Int ?? 8
+        lastDigestDayKey = defaults.string(forKey: "lastDigestDayKey") ?? ""
         ignoredSpeciesIDs = Set(defaults.array(forKey: "ignoredSpeciesIDs") as? [Int] ?? [])
         ignoredSpeciesNames = Set(defaults.array(forKey: "ignoredSpeciesNames") as? [String] ?? [])
         audioInputSource = AudioInputSource(rawValue: defaults.string(forKey: "audioInputSource") ?? "") ?? .defaultMic
@@ -415,6 +438,9 @@ final class AppSettings: ObservableObject {
         defaults.set(notifyNewSpeciesOnly, forKey: "notifyNewSpeciesOnly")
         defaults.set(notificationSoundEnabled, forKey: "notificationSoundEnabled")
         defaults.set(maxNotificationsPerHour, forKey: "maxNotificationsPerHour")
+        defaults.set(digestEnabled, forKey: "digestEnabled")
+        defaults.set(digestHour, forKey: "digestHour")
+        defaults.set(lastDigestDayKey, forKey: "lastDigestDayKey")
         defaults.set(Array(ignoredSpeciesIDs), forKey: "ignoredSpeciesIDs")
         defaults.set(Array(ignoredSpeciesNames), forKey: "ignoredSpeciesNames")
         defaults.set(audioInputSource.rawValue, forKey: "audioInputSource")

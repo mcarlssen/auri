@@ -46,6 +46,18 @@ struct HistoryTabView: View {
         historyStore.speciesSummaries(search: searchText, sort: sortOption, since: sinceDate)
     }
 
+    /// Species with any detection since Jan 1 of the current year.
+    private var thisYearSpeciesCount: Int {
+        let startOfYear = Calendar.current.date(
+            from: Calendar.current.dateComponents([.year], from: Date())
+        )
+        return historyStore.speciesCount(since: startOfYear)
+    }
+
+    private var todaySpeciesCount: Int {
+        historyStore.speciesCount(since: Calendar.current.startOfDay(for: Date()))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Heard")
@@ -62,6 +74,13 @@ struct HistoryTabView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
+            HStack(spacing: 12) {
+                statTile(historyStore.speciesCount(since: nil), "Lifetime species")
+                statTile(thisYearSpeciesCount, "This year")
+                statTile(todaySpeciesCount, "Today")
+                statTile(historyStore.totalDetectionCount, "Detections")
+            }
 
             HStack(spacing: 12) {
                 TextField("Search species", text: $searchText)
@@ -112,6 +131,7 @@ struct HistoryTabView: View {
                             SpeciesHistoryCard(
                                 summary: summary,
                                 entries: historyStore.entries(forBirdId: summary.birdId),
+                                showNewThisYearBadge: showNewThisYearBadge(for: summary),
                                 viewModel: viewModel
                             )
                         }
@@ -141,11 +161,31 @@ struct HistoryTabView: View {
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
         copyFeedback = "\(lines.count) species copied to clipboard."
     }
+
+    private func statTile(_ value: Int, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.title3.monospacedDigit().bold())
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The blue "New this year" pill marks a lifetime-list species first heard
+    /// this calendar year. Only shown in the lifetime scope, where the list spans
+    /// years; the session/today scopes are already time-bounded.
+    private func showNewThisYearBadge(for summary: SpeciesHistorySummary) -> Bool {
+        guard scope == .lifetime else { return false }
+        return Calendar.current.isDate(summary.firstSeen, equalTo: Date(), toGranularity: .year)
+    }
 }
 
 struct SpeciesHistoryCard: View {
     let summary: SpeciesHistorySummary
     let entries: [BirdDetection]
+    let showNewThisYearBadge: Bool
     @ObservedObject var viewModel: BirdDetectionViewModel
 
     var body: some View {
@@ -167,8 +207,17 @@ struct SpeciesHistoryCard: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(summary.birdName)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(summary.birdName)
+                            .font(.headline)
+                        if showNewThisYearBadge {
+                            Text("New this year")
+                                .font(.caption2)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 1.5)
+                                .background(.blue.opacity(0.25), in: Capsule())
+                        }
+                    }
                     Text(summary.scientificName)
                         .font(.caption.italic())
                         .foregroundStyle(.secondary)

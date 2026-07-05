@@ -27,6 +27,7 @@ enum HistorySortOption: String, CaseIterable, Identifiable {
     case count
     case rarity
     case name
+    case firstHeard
 
     var id: String { rawValue }
 
@@ -36,6 +37,7 @@ enum HistorySortOption: String, CaseIterable, Identifiable {
         case .count: return "Recognition count"
         case .rarity: return "Rarity"
         case .name: return "Name"
+        case .firstHeard: return "First heard"
         }
     }
 }
@@ -140,6 +142,8 @@ final class RecognitionHistoryStore: ObservableObject {
             summaries.sort {
                 $0.birdName.localizedCaseInsensitiveCompare($1.birdName) == .orderedAscending
             }
+        case .firstHeard:
+            summaries.sort { $0.firstSeen > $1.firstSeen }
         }
 
         return summaries
@@ -147,6 +151,21 @@ final class RecognitionHistoryStore: ObservableObject {
 
     func lifetimeCount(for birdId: Int) -> Int {
         entries.filter { $0.birdId == birdId }.count
+    }
+
+    /// Distinct species (by birdId) across all entries, optionally limited to
+    /// those at or after `date`. Passing nil counts the whole lifetime list.
+    func speciesCount(since date: Date?) -> Int {
+        var ids = Set<Int>()
+        for entry in entries where date == nil || entry.timestamp >= date! {
+            ids.insert(entry.birdId)
+        }
+        return ids.count
+    }
+
+    /// Total recorded detections across both live and file sources.
+    var totalDetectionCount: Int {
+        entries.count
     }
 
     func uniqueSpecies(since date: Date) -> [SessionSpeciesSummary] {
