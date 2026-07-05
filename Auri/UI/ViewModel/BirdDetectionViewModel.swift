@@ -428,6 +428,22 @@ final class BirdDetectionViewModel: ObservableObject {
         }
     }
 
+    /// Confirm or reject an entire grouped feed entry — its members are one
+    /// acoustic event to the user. Toggle semantics: re-applying the state a
+    /// group is already in reverts it to unverified. Both stores of truth are
+    /// updated — the persistent history and the in-memory live feed (value
+    /// copies replaced by id).
+    func setVerification(_ group: DetectionGroup, to verification: DetectionVerification) {
+        let target: DetectionVerification = group.verification == verification ? .unverified : verification
+        let ids = Set(group.detections.map(\.id))
+        historyStore.setVerification(target, forIds: ids)
+        detections = detections.map { ids.contains($0.id) ? $0.withVerification(target) : $0 }
+        RecognitionLogger.log(
+            "verification \(target.rawValue) for \(group.representative.birdName) (\(ids.count) detection\(ids.count == 1 ? "" : "s"))",
+            category: "Verify"
+        )
+    }
+
     /// Remove every detection in a grouped feed entry at once.
     func deleteDetections(in group: DetectionGroup) {
         let ids = Set(group.detections.map(\.id))

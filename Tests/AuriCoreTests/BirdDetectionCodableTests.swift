@@ -103,6 +103,8 @@ final class BirdDetectionCodableTests: XCTestCase {
         XCTAssertNil(entry.sourceFileName)
         XCTAssertNil(entry.audioOffsetSeconds)
         XCTAssertNil(entry.rarity)
+        // History written before verification existed must default to unverified.
+        XCTAssertEqual(entry.verification, .unverified)
     }
 
     // MARK: - Round trip
@@ -141,5 +143,61 @@ final class BirdDetectionCodableTests: XCTestCase {
         XCTAssertEqual(decoded.rarity?.regionLabel, original.rarity?.regionLabel)
         XCTAssertEqual(decoded.rarity?.frequencyPercent ?? -1, original.rarity?.frequencyPercent ?? -2, accuracy: 0.0001)
         XCTAssertEqual(decoded, original)
+    }
+
+    // MARK: - Verification
+
+    func testRoundTripPreservesVerificationStates() throws {
+        for state in [DetectionVerification.confirmed, .rejected, .unverified] {
+            let original = BirdDetection(
+                birdName: "American Robin",
+                scientificName: "Turdus migratorius",
+                confidence: 0.8,
+                birdId: 101,
+                inferenceMs: 20,
+                verification: state
+            )
+            let data = try makeEncoder().encode(original)
+            let decoded = try makeDecoder().decode(BirdDetection.self, from: data)
+            XCTAssertEqual(decoded.verification, state)
+            XCTAssertEqual(decoded, original)
+        }
+    }
+
+    // MARK: - DetectionGroup verification aggregation
+
+    private func detection(_ verification: DetectionVerification) -> BirdDetection {
+        BirdDetection(
+            birdName: "American Robin",
+            scientificName: "Turdus migratorius",
+            confidence: 0.8,
+            birdId: 101,
+            inferenceMs: 20,
+            verification: verification
+        )
+    }
+
+    func testGroupVerificationAnyConfirmedWins() {
+        let group = DetectionGroup(detections: [
+            detection(.confirmed),
+            detection(.rejected),
+            detection(.unverified)
+        ])
+        XCTAssertEqual(group.verification, .confirmed)
+    }
+
+    func testGroupVerificationAllRejectedIsRejected() {
+        let group = DetectionGroup(detections: [detection(.rejected), detection(.rejected)])
+        XCTAssertEqual(group.verification, .rejected)
+    }
+
+    func testGroupVerificationMixedRejectedAndUnverifiedIsUnverified() {
+        let group = DetectionGroup(detections: [detection(.rejected), detection(.unverified)])
+        XCTAssertEqual(group.verification, .unverified)
+    }
+
+    func testGroupVerificationAllUnverifiedIsUnverified() {
+        let group = DetectionGroup(detections: [detection(.unverified), detection(.unverified)])
+        XCTAssertEqual(group.verification, .unverified)
     }
 }
