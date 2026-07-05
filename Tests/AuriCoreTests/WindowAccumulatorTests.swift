@@ -58,25 +58,41 @@ final class WindowAccumulatorTests: XCTestCase {
         accumulator.silenceGateEnabled = true
         accumulator.silenceGateThresholdLinear = 0.5
 
-        accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet, RMS below threshold
-        accumulator.append(floatsData([0.6, 0.6, 0.6, 0.6])) // loud, RMS above threshold
+        accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet, peak below threshold
+        accumulator.append(floatsData([0.6, 0.6, 0.6, 0.6])) // loud, peak above threshold
 
         let window = accumulator.nextWindow()
         XCTAssertEqual(floats(window!), [0.6, 0.6, 0.6, 0.6])
         XCTAssertEqual(accumulator.silentWindowsSkipped, 1)
     }
 
-    func testSilenceGateUsesRMSSoSustainedNegativeEnergyAlsoPasses() {
+    func testSilenceGateUsesMagnitudeSoNegativePeaksAlsoPass() {
         var accumulator = WindowAccumulator(windowSampleCount: 4, hopByteCount: 16)
         accumulator.silenceGateEnabled = true
         accumulator.silenceGateThresholdLinear = 0.5
 
         accumulator.append(floatsData([0.1, 0.1, 0.1, 0.1])) // quiet
-        accumulator.append(floatsData([-0.6, -0.6, -0.6, -0.6])) // loud, RMS is sign-agnostic
+        accumulator.append(floatsData([-0.6, -0.6, -0.6, -0.6])) // loud, peak magnitude is sign-agnostic
 
         let window = accumulator.nextWindow()
         XCTAssertEqual(floats(window!), [-0.6, -0.6, -0.6, -0.6])
         XCTAssertEqual(accumulator.silentWindowsSkipped, 1)
+    }
+
+    func testSilenceGatePassesWindowWithBriefPeakEvenWhenAverageIsLow() {
+        // The regression guard: a single loud sample among quiet ones clears the
+        // gate on its peak, even though the window's average energy is well below
+        // threshold. This is the "short chirp in quiet air" case a peak gate must
+        // keep — a window-RMS gate (peak 0.6 but RMS 0.3 < 0.5) would wrongly skip it.
+        var accumulator = WindowAccumulator(windowSampleCount: 4, hopByteCount: 16)
+        accumulator.silenceGateEnabled = true
+        accumulator.silenceGateThresholdLinear = 0.5
+
+        accumulator.append(floatsData([0.6, 0.0, 0.0, 0.0]))
+
+        let window = accumulator.nextWindow()
+        XCTAssertEqual(floats(window!), [0.6, 0.0, 0.0, 0.0])
+        XCTAssertEqual(accumulator.silentWindowsSkipped, 0)
     }
 
     func testSilenceGateDisabledReturnsQuietWindowAndCounterStaysZero() {

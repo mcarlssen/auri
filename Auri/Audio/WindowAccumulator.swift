@@ -2,8 +2,8 @@ import Accelerate
 import Foundation
 
 /// Accumulates mono float32 PCM bytes and yields fixed-size analysis windows
-/// advanced by a configurable hop, optionally skipping windows whose RMS level
-/// falls below a silence gate.
+/// advanced by a configurable hop, optionally skipping windows whose peak
+/// magnitude falls below a silence gate.
 ///
 /// Samples are held in a fixed-capacity circular buffer of `Float`: appending
 /// copies incoming samples into the ring (growing only when it must), and
@@ -77,12 +77,12 @@ struct WindowAccumulator {
 
     /// Returns the next analysis window, advancing by the hop. Returns nil when
     /// fewer than `windowSampleCount` samples are buffered. When the gate is
-    /// enabled, windows whose RMS level falls below the threshold are skipped
+    /// enabled, windows whose peak magnitude falls below the threshold are skipped
     /// (and counted) until a non-silent window is found or the buffer runs short.
     mutating func nextWindow() -> Data? {
         let hopSamples = hopByteCount / MemoryLayout<Float>.size
         while sampleCount >= windowSampleCount {
-            if silenceGateEnabled, windowRMSBelowGate() {
+            if silenceGateEnabled, windowPeakBelowGate() {
                 silentWindowsSkipped &+= 1
                 advance(by: hopSamples)
                 continue
@@ -94,18 +94,19 @@ struct WindowAccumulator {
         return nil
     }
 
-    /// True when the next window's RMS level is below the silence gate, meaning
-    /// inference would be spent on inaudible audio. Using RMS (rather than peak
-    /// magnitude) means a lone transient click no longer keeps an otherwise
-    /// silent window alive — sustained energy is what's measured.
-    private func windowRMSBelowGate() -> Bool {
-        var rms: Float = 0
+    /// True when the next window's peak magnitude is below the silence gate,
+    /// meaning inference would be spent on inaudible audio. Gating on peak (rather
+    /// than window RMS) keeps a window alive as long as any sample rises above the
+    /// threshold, so a brief call in otherwise-quiet air is still analyzed — an RMS
+    /// measure averages that call away across the 3-second window and skips it.
+    private func windowPeakBelowGate() -> Bool {
+        var peak: Float = 0
         let contiguous = min(windowSampleCount, ring.count - readIndex)
         if contiguous == windowSampleCount {
             // Window doesn't wrap the ring; measure the samples in place.
             ring.withUnsafeBufferPointer { src in
                 guard let base = src.baseAddress else { return }
-                vDSP_rmsqv(base + readIndex, 1, &rms, vDSP_Length(windowSampleCount))
+                vDSP_maxmgv(base + readIndex, 1, &peak, vDSP_Length(windowSampleCount))
             }
         } else {
             // Window wraps the ring end; gather it contiguously before measuring.
@@ -113,10 +114,10 @@ struct WindowAccumulator {
             copyOut(into: &scratch, count: windowSampleCount)
             scratch.withUnsafeBufferPointer { buf in
                 guard let base = buf.baseAddress else { return }
-                vDSP_rmsqv(base, 1, &rms, vDSP_Length(windowSampleCount))
+                vDSP_maxmgv(base, 1, &peak, vDSP_Length(windowSampleCount))
             }
         }
-        return rms < silenceGateThresholdLinear
+        return peak < silenceGateThresholdLinear
     }
 
     /// Copies one window's worth of samples out of the ring into a fresh, tightly
