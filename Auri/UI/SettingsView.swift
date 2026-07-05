@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import SwiftUI
 
@@ -6,6 +7,8 @@ struct SettingsView: View {
     @ObservedObject var viewModel: BirdDetectionViewModel
     @ObservedObject var settings: AppSettings
     @ObservedObject private var locationProvider: LocationProvider
+    /// Observed so the "Show in Finder" button appears once the first clip lands.
+    @ObservedObject private var bestRecordings: BestRecordingsStore
     var embedded: Bool = false
 
     @State private var devices: [AVCaptureDevice] = []
@@ -16,6 +19,7 @@ struct SettingsView: View {
         self.viewModel = viewModel
         self.settings = viewModel.settings
         self.locationProvider = viewModel.locationProvider
+        self.bestRecordings = viewModel.bestRecordings
         self.embedded = embedded
     }
 
@@ -168,6 +172,18 @@ struct SettingsView: View {
                     Text("Auto-gain normalizes quiet input toward a level BirdNET expects. Without Merlin's metadata model, try a 25–40% threshold or use the suggested value after a minute of listening.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Toggle("Keep the best recording of each species", isOn: $settings.bestRecordingsEnabled)
+
+                    Text("Auri saves the highest-confidence clip per species (~0.3 MB each) so you can replay and share them from the Heard tab. Turning this off stops new captures but keeps clips you've already saved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if !bestRecordings.recordings.isEmpty {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([bestRecordings.directoryURL])
+                        }
+                    }
                 }
 
                 Section("Notifications") {
