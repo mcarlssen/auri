@@ -3,6 +3,8 @@ import SwiftUI
 
 struct LocationStatusView: View {
     let isEnabled: Bool
+    var manualModeEnabled: Bool = false
+    var manualCoordinateText: String? = nil
     let location: CLLocation?
     let authorizationStatus: CLAuthorizationStatus
     let regionalLabel: String?
@@ -29,7 +31,7 @@ struct LocationStatusView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let location {
+            if !manualModeEnabled, let location {
                 Text(
                     "±\(Int(location.horizontalAccuracy.rounded())) m accuracy · " +
                     "updated \(location.timestamp.formatted(date: .omitted, time: .shortened))"
@@ -43,6 +45,10 @@ struct LocationStatusView: View {
     private var statusText: String {
         guard isEnabled else {
             return "Location filtering is off."
+        }
+
+        if manualModeEnabled {
+            return manualCoordinateText ?? "Enter a latitude and longitude below."
         }
 
         switch authorizationStatus {

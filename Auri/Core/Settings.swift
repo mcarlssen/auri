@@ -178,6 +178,21 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Use a manually entered coordinate for regional filtering instead of Core
+    /// Location. Lets regional filtering work without granting the system location
+    /// permission.
+    @Published var manualLocationEnabled: Bool {
+        didSet { save() }
+    }
+
+    @Published var manualLatitude: Double {
+        didSet { save() }
+    }
+
+    @Published var manualLongitude: Double {
+        didSet { save() }
+    }
+
     @Published var eBirdApiKey: String {
         didSet { save() }
     }
@@ -300,6 +315,9 @@ final class AppSettings: ObservableObject {
         cooldownSeconds = defaults.object(forKey: "cooldownSeconds") as? Double ?? 5
         perSpeciesCooldownSeconds = defaults.object(forKey: "perSpeciesCooldownSeconds") as? Double ?? 3600
         locationFilteringEnabled = defaults.object(forKey: "locationFilteringEnabled") as? Bool ?? false
+        manualLocationEnabled = defaults.object(forKey: "manualLocationEnabled") as? Bool ?? false
+        manualLatitude = defaults.object(forKey: "manualLatitude") as? Double ?? 0
+        manualLongitude = defaults.object(forKey: "manualLongitude") as? Double ?? 0
         eBirdApiKey = defaults.string(forKey: "eBirdApiKey") ?? ""
         notificationsEnabled = defaults.object(forKey: "notificationsEnabled") as? Bool ?? true
         notificationSoundEnabled = defaults.object(forKey: "notificationSoundEnabled") as? Bool ?? true
@@ -373,6 +391,9 @@ final class AppSettings: ObservableObject {
         defaults.set(cooldownSeconds, forKey: "cooldownSeconds")
         defaults.set(perSpeciesCooldownSeconds, forKey: "perSpeciesCooldownSeconds")
         defaults.set(locationFilteringEnabled, forKey: "locationFilteringEnabled")
+        defaults.set(manualLocationEnabled, forKey: "manualLocationEnabled")
+        defaults.set(manualLatitude, forKey: "manualLatitude")
+        defaults.set(manualLongitude, forKey: "manualLongitude")
         defaults.set(eBirdApiKey, forKey: "eBirdApiKey")
         defaults.set(notificationsEnabled, forKey: "notificationsEnabled")
         defaults.set(notificationSoundEnabled, forKey: "notificationSoundEnabled")

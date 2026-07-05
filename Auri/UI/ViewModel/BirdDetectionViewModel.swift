@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import Foundation
 import UserNotifications
 
@@ -110,6 +111,20 @@ final class BirdDetectionViewModel: ObservableObject {
         Double(BirdNetCoreMLRecognizer.windowSamples) / Double(BirdNetCoreMLRecognizer.modelSampleRate)
     private var debugCaptureEnabled = false
     private let maxModelOutputEntries = 150
+
+    /// Lowercased scientific names expected in the current region, mirrored from
+    /// `EBirdRegionalService` so detections and the live model-output feed can be
+    /// range-filtered synchronously on the main actor.
+    private var regionalInRegionScientificNames: Set<String> = []
+    /// Lowercased scientific names the eBird taxonomy knows about. A name absent
+    /// here can't be classified in/out of region, so it is never filtered out.
+    private var regionalKnownScientificNames: Set<String> = []
+
+    private enum RegionStatus {
+        case unknown
+        case inRegion
+        case outOfRegion
+    }
 
     init() {
         Task { await bootstrapIfNeeded() }
@@ -308,13 +323,23 @@ final class BirdDetectionViewModel: ObservableObject {
     }
 
     func syncLocationAccess() {
-        if settings.locationFilteringEnabled {
-            locationProvider.request()
-            Task { await refreshRegionalDataIfNeeded() }
-        } else {
+        guard settings.locationFilteringEnabled else {
+            RecognitionLogger.log("location filtering disabled", category: "Location")
             locationProvider.stop()
             regionalLabel = nil
+            regionalInRegionScientificNames = []
+            regionalKnownScientificNames = []
+            return
         }
+
+        if settings.manualLocationEnabled {
+            RecognitionLogger.log("location filtering on; using manual coordinate", category: "Location")
+            locationProvider.stop()
+        } else {
+            RecognitionLogger.log("location filtering on; requesting Core Location access", category: "Location")
+            locationProvider.request()
+        }
+        Task { await refreshRegionalDataIfNeeded() }
     }
 
     func cancelFileAnalysis() {
@@ -438,7 +463,10 @@ final class BirdDetectionViewModel: ObservableObject {
     /// Debug accordion can show what is firing below the confidence threshold.
     /// Scores under `debugMinConfidence` are dropped as noise.
     private func captureModelOutput(_ responses: [RecognitionResponse]) {
-        let visible = responses.filter { $0.confidence >= Self.debugMinConfidence }
+        let visible = responses.filter {
+            $0.confidence >= Self.debugMinConfidence
+                && !isOutOfRangeSuppressed(scientificName: $0.scientificName, confidence: $0.confidence)
+        }
         guard !visible.isEmpty else { return }
         let threshold = settings.confidenceThreshold
         let now = Date()
@@ -510,12 +538,25 @@ final class BirdDetectionViewModel: ObservableObject {
 
     private func refreshRegionalDataIfNeeded() async {
         guard settings.locationFilteringEnabled else { return }
-        guard let location = locationProvider.lastKnownLocation else { return }
+        guard let location = effectiveLocation else { return }
         await EBirdRegionalService.shared.refreshIfNeeded(
             location: location,
             apiKey: settings.resolvedEBirdApiKey
         )
-        regionalLabel = await EBirdRegionalService.shared.currentRegionLabel()
+        let snapshot = await EBirdRegionalService.shared.regionalSnapshot()
+        let changed = regionalLabel != snapshot.regionLabel
+            || regionalInRegionScientificNames.count != snapshot.inRegionScientificNames.count
+            || regionalKnownScientificNames.count != snapshot.knownScientificNames.count
+        regionalLabel = snapshot.regionLabel
+        regionalInRegionScientificNames = snapshot.inRegionScientificNames
+        regionalKnownScientificNames = snapshot.knownScientificNames
+        if changed {
+            RecognitionLogger.log(
+                "regional data updated: region=\(snapshot.regionLabel ?? "none") " +
+                "inRegion=\(snapshot.inRegionScientificNames.count) taxonomy=\(snapshot.knownScientificNames.count)",
+                category: "Location"
+            )
+        }
     }
 
     @discardableResult
@@ -633,15 +674,15 @@ final class BirdDetectionViewModel: ObservableObject {
             effectiveConfidence = corroboratedConfidence
         }
 
-        let rarity = await lookupRarity(scientificName: response.scientificName)
+        let rarity = rarityInfo(scientificName: response.scientificName)
 
-        if settings.locationFilteringEnabled,
-           let rarity,
-           rarity.level == .unusual,
-           effectiveConfidence < Self.unusualSpeciesConfidenceFloor {
+        // Judge the out-of-range floor against the corroborated confidence so a
+        // strong, multi-window rare-species hit can still surface.
+        if isOutOfRangeSuppressed(scientificName: response.scientificName, confidence: effectiveConfidence) {
             RecognitionLogger.log(
-                "suppressed unusual (non-local) species below \(Int(Self.unusualSpeciesConfidenceFloor * 100))% floor: " +
-                "\(response.bird) conf=\(String(format: "%.3f", effectiveConfidence))"
+                "suppressed out-of-range species below \(Int(Self.unusualSpeciesConfidenceFloor * 100))% floor: " +
+                "\(response.bird) conf=\(String(format: "%.3f", effectiveConfidence))",
+                category: "Location"
             )
             return false
         }
@@ -699,12 +740,52 @@ final class BirdDetectionViewModel: ObservableObject {
         return true
     }
 
-    private func lookupRarity(scientificName: String) async -> RarityInfo? {
+    /// The location used for regional filtering and eBird form prefill: a manually
+    /// entered coordinate when manual mode is on and valid, otherwise the Core
+    /// Location fix.
+    var effectiveLocation: CLLocation? {
+        if settings.manualLocationEnabled {
+            let lat = settings.manualLatitude
+            let lon = settings.manualLongitude
+            guard (-90...90).contains(lat), (-180...180).contains(lon), !(lat == 0 && lon == 0) else {
+                return nil
+            }
+            return CLLocation(latitude: lat, longitude: lon)
+        }
+        return locationProvider.lastKnownLocation
+    }
+
+    /// Where a species sits relative to the current region, judged from the eBird
+    /// snapshot. `.unknown` when filtering is off, region data hasn't loaded, or the
+    /// species isn't in the eBird taxonomy (so it can't be judged and isn't filtered).
+    private func regionStatus(scientificName: String) -> RegionStatus {
+        guard settings.locationFilteringEnabled, !regionalKnownScientificNames.isEmpty else {
+            return .unknown
+        }
+        let key = scientificName.lowercased()
+        guard regionalKnownScientificNames.contains(key) else { return .unknown }
+        return regionalInRegionScientificNames.contains(key) ? .inRegion : .outOfRegion
+    }
+
+    private func rarityInfo(scientificName: String) -> RarityInfo? {
         guard settings.locationFilteringEnabled else { return nil }
-        return await EBirdRegionalService.shared.rarity(
-            for: scientificName,
-            apiKey: settings.resolvedEBirdApiKey
-        )
+        switch regionStatus(scientificName: scientificName) {
+        case .inRegion:
+            return RarityInfo(level: .expected, regionLabel: regionalLabel, frequencyPercent: nil)
+        case .outOfRegion:
+            return RarityInfo(level: .unusual, regionLabel: regionalLabel, frequencyPercent: nil)
+        case .unknown:
+            return RarityInfo(level: .unknown, regionLabel: regionalLabel, frequencyPercent: nil)
+        }
+    }
+
+    /// True when a species is out of range for the current locale and not confident
+    /// enough to surface as a possible rare sighting. Drives both committed
+    /// detections and what the live model-output feed shows.
+    private func isOutOfRangeSuppressed(scientificName: String, confidence: Double) -> Bool {
+        guard settings.locationFilteringEnabled else { return false }
+        guard regionStatus(scientificName: scientificName) == .outOfRegion else { return false }
+        return confidence < Self.unusualSpeciesConfidenceFloor
     }
 
     private func recordDetection(_ detection: BirdDetection) {
