@@ -74,6 +74,43 @@ struct SettingsView: View {
                         viewModel.audioHandler.setInputGain(dB: gain)
                     }
 
+                    Toggle("Reduce input noise", isOn: $settings.noiseReductionEnabled)
+                        .onChange(of: settings.noiseReductionEnabled) { _, _ in
+                            viewModel.applyNoiseReduction()
+                        }
+
+                    if settings.noiseReductionEnabled {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Low-cut filter: \(Int(settings.noiseReductionCutoffHz)) Hz")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $settings.noiseReductionCutoffHz, in: 80...2000, step: 10)
+                            Text("Higher cutoffs remove more fan rumble and hum but can clip low-frequency species (doves, owls).")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .onChange(of: settings.noiseReductionCutoffHz) { _, _ in
+                            viewModel.applyNoiseReduction()
+                        }
+
+                        Toggle("Spectral noise gate (experimental)", isOn: $settings.spectralNoiseGateEnabled)
+                            .onChange(of: settings.spectralNoiseGateEnabled) { _, _ in
+                                viewModel.applyNoiseReduction()
+                            }
+
+                        if settings.spectralNoiseGateEnabled {
+                            Text("Can reduce steady fan hiss inside the 1–8 kHz bird band, but may introduce artifacts that lower detection accuracy. Compare detections with it on and off using the replayable clips.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Text("Noise reduction conditions the microphone input before analysis, cleaning the audio BirdNET hears, the retained clips, and the spectrogram together. Off by default — leave it off unless a machine-noisy mic (fan, hum) muddies detections.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     Picker("Spectrogram scale", selection: $settings.spectrogramFrequencyScale) {
                         ForEach(SpectrogramFrequencyScale.allCases) { scale in
                             Text(scale.label).tag(scale)

@@ -259,6 +259,24 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Opt-in input noise reduction. Off by default: BirdNET tolerates real-world
+    /// noise, so conditioning only helps machine-noisy laptop mics.
+    @Published var noiseReductionEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Low-cut (high-pass) corner frequency, in Hz, used when noise reduction is on.
+    @Published var noiseReductionCutoffHz: Double {
+        didSet { save() }
+    }
+
+    /// Experimental spectral noise gate layered on top of the low-cut. Off by
+    /// default: it can trim steady in-band hiss but its artifacts may lower
+    /// detection accuracy.
+    @Published var spectralNoiseGateEnabled: Bool {
+        didSet { save() }
+    }
+
     @Published var spectrogramFFTSize: SpectrogramFFTSize {
         didSet { save() }
     }
@@ -347,6 +365,9 @@ final class AppSettings: ObservableObject {
         launchAtLogin = defaults.object(forKey: "launchAtLogin") as? Bool ?? false
         debugLogging = defaults.object(forKey: "debugLogging") as? Bool ?? false
         inputGainDB = defaults.object(forKey: "inputGainDB") as? Double ?? 12
+        noiseReductionEnabled = defaults.object(forKey: "noiseReductionEnabled") as? Bool ?? false
+        noiseReductionCutoffHz = defaults.object(forKey: "noiseReductionCutoffHz") as? Double ?? 300
+        spectralNoiseGateEnabled = defaults.object(forKey: "spectralNoiseGateEnabled") as? Bool ?? false
         let fftRaw = defaults.object(forKey: "spectrogramFFTSize") as? Int ?? SpectrogramFFTSize.size2048.rawValue
         spectrogramFFTSize = SpectrogramFFTSize(rawValue: fftRaw) ?? .size2048
         let overlapRaw = defaults.object(forKey: "spectrogramOverlap") as? Double ?? SpectrogramOverlap.sevenEighths.rawValue
@@ -424,6 +445,9 @@ final class AppSettings: ObservableObject {
         defaults.set(launchAtLogin, forKey: "launchAtLogin")
         defaults.set(debugLogging, forKey: "debugLogging")
         defaults.set(inputGainDB, forKey: "inputGainDB")
+        defaults.set(noiseReductionEnabled, forKey: "noiseReductionEnabled")
+        defaults.set(noiseReductionCutoffHz, forKey: "noiseReductionCutoffHz")
+        defaults.set(spectralNoiseGateEnabled, forKey: "spectralNoiseGateEnabled")
         defaults.set(spectrogramFFTSize.rawValue, forKey: "spectrogramFFTSize")
         defaults.set(spectrogramOverlap.rawValue, forKey: "spectrogramOverlap")
         defaults.set(spectrogramFrequencyScale.rawValue, forKey: "spectrogramFrequencyScale")
