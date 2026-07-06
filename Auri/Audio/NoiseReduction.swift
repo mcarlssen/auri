@@ -156,11 +156,23 @@ struct SpectralNoiseGate {
     // switching fully off (which is what produces musical-noise chirps).
     private let beta: Float = 1.5
     private let floor: Float = 0.15
-    private let lambda: Float = 0.95 // slow noise-floor release
+    // Recursive-averaging coefficient for the per-bin noise estimate (~10-frame
+    // memory). A plain minimum tracker collapses onto the noise floor's *minimum*
+    // magnitude — far below its mean — leaving beta*noise too small to actually
+    // subtract steady noise. An exponential average settles on the noise *level*,
+    // so the gate genuinely attenuates stationary hiss while brief, louder
+    // transients (bird calls) ride above the lagging estimate and pass through.
+    private let noiseSmoothing: Float = 0.9
     private let epsilon: Float = 1e-9
 
     // FFT (modern Swift wrapper over the split-complex real FFT).
     private let fft: vDSP.FFT<DSPSplitComplex>
+    // Forward+inverse round-trip gain, measured empirically at init. The
+    // split-complex real FFT's internal scaling convention can't be verified by
+    // hand in this environment, so calibrating and dividing it out makes
+    // unity-gain reconstruction exact regardless of what the constant turns out
+    // to be.
+    private let roundTripScale: Float
     private let window: [Float]
     private let zeroHop: [Float]
 
@@ -198,6 +210,7 @@ struct SpectralNoiseGate {
             fatalError("Unsupported FFT length: \(frameSize)")
         }
         self.fft = fft
+        self.roundTripScale = Self.measureRoundTripScale(fft: fft, frameSize: frameSize)
         self.window = vDSP.window(
             ofType: Float.self,
             usingSequence: .hanningDenormalized,
@@ -346,9 +359,9 @@ struct SpectralNoiseGate {
             }
         }
 
-        // The split-complex real FFT round-trip scales by 2N; undo it so the
-        // reconstruction matches the windowed input (unity-gain mask → identity).
-        var scale = Float(1.0 / Float(2 * frameSize))
+        // Undo the FFT round-trip gain (measured at init) so the reconstruction
+        // matches the windowed input for a unity-gain mask.
+        var scale = roundTripScale
         vDSP_vsmul(recon, 1, &scale, &recon, 1, vDSP_Length(frameSize))
 
         // Overlap-add the reconstruction and accumulate the window for
@@ -372,10 +385,10 @@ struct SpectralNoiseGate {
         winAccum.append(contentsOf: zeroHop)
     }
 
-    /// Updates each bin's noise floor and scales the complex bin by the
-    /// over-subtraction gain, preserving phase. The floor tracks fast pull-downs
-    /// and a slow release so it settles on steady noise while brief, louder
-    /// transients (bird calls) ride above it and pass through.
+    /// Updates each bin's noise floor (an exponential average of magnitude) and
+    /// scales the complex bin by the over-subtraction gain, preserving phase. The
+    /// estimate settles on steady noise while brief, louder transients (bird
+    /// calls) ride above the lagging average and pass through.
     private mutating func applyGainMask() {
         let halfN = frameSize / 2
         for k in 1..<halfN {
@@ -385,10 +398,8 @@ struct SpectralNoiseGate {
 
             if !noiseInitialized {
                 noise[k] = mag // seed lazily from the first frame
-            } else if mag < noise[k] {
-                noise[k] = mag
             } else {
-                noise[k] = lambda * noise[k] + (1 - lambda) * mag
+                noise[k] = noiseSmoothing * noise[k] + (1 - noiseSmoothing) * mag
             }
 
             let subtracted = mag - beta * noise[k]
@@ -397,6 +408,65 @@ struct SpectralNoiseGate {
             outImag[k] = im * gain
         }
         noiseInitialized = true
+    }
+
+    /// Measures this FFT configuration's forward+inverse round-trip gain on a
+    /// clean mid-band probe. The round-trip is a pure scalar multiple of the
+    /// identity, so a least-squares fit of the reconstruction to the probe
+    /// recovers that scalar; its reciprocal is the reconstruction scale. This
+    /// sidesteps any dependence on the library's internal normalization.
+    private static func measureRoundTripScale(
+        fft: vDSP.FFT<DSPSplitComplex>,
+        frameSize: Int
+    ) -> Float {
+        let halfN = frameSize / 2
+        // A tone on an exact bin (no leakage), spread across samples.
+        let probe = (0..<frameSize).map { i in
+            cosf(2 * .pi * Float(frameSize / 8) * Float(i) / Float(frameSize))
+        }
+        var inReal = [Float](repeating: 0, count: halfN)
+        var inImag = [Float](repeating: 0, count: halfN)
+        var outReal = [Float](repeating: 0, count: halfN)
+        var outImag = [Float](repeating: 0, count: halfN)
+        var recon = [Float](repeating: 0, count: frameSize)
+
+        inReal.withUnsafeMutableBufferPointer { inRealP in
+            inImag.withUnsafeMutableBufferPointer { inImagP in
+                outReal.withUnsafeMutableBufferPointer { outRealP in
+                    outImag.withUnsafeMutableBufferPointer { outImagP in
+                        var inSplit = DSPSplitComplex(
+                            realp: inRealP.baseAddress!,
+                            imagp: inImagP.baseAddress!
+                        )
+                        var outSplit = DSPSplitComplex(
+                            realp: outRealP.baseAddress!,
+                            imagp: outImagP.baseAddress!
+                        )
+                        probe.withUnsafeBufferPointer { pp in
+                            pp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: halfN) { cp in
+                                vDSP_ctoz(cp, 2, &inSplit, 1, vDSP_Length(halfN))
+                            }
+                        }
+                        fft.forward(input: inSplit, output: &outSplit)
+                        fft.inverse(input: outSplit, output: &inSplit)
+                        recon.withUnsafeMutableBufferPointer { rp in
+                            rp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: halfN) { cp in
+                                vDSP_ztoc(&inSplit, 1, cp, 2, vDSP_Length(halfN))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        var dotRP: Float = 0
+        var dotPP: Float = 0
+        for i in 0..<frameSize {
+            dotRP += recon[i] * probe[i]
+            dotPP += probe[i] * probe[i]
+        }
+        let roundTrip = dotPP > 0 ? dotRP / dotPP : 1
+        return abs(roundTrip) > 1e-20 ? 1 / roundTrip : 1
     }
 }
 

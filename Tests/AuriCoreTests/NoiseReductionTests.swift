@@ -157,11 +157,12 @@ final class SpectralNoiseGateTests: XCTestCase {
         var input = [Float](repeating: 0, count: n)
         for i in 0..<n {
             let noise = Float.random(in: -0.1...0.1, using: &generator)
-            // Pulse the tone (100 ms on / 100 ms off) so the tone bin's noise floor,
-            // tracked at its minimum, stays low and each pulse rides above it — the
-            // behavior real (non-stationary) birdsong shows against steady machine noise.
-            let pulseOn = (i / 1600) % 2 == 0
-            let tone = pulseOn ? sinf(2 * .pi * toneFreq * Float(i) / sr) * 0.6 : 0
+            // Short transient bursts (~48 ms on, ~144 ms off) — how real,
+            // non-stationary birdsong behaves against steady machine noise. The
+            // adaptive noise floor tracks the noise between bursts, so each burst
+            // rides above it and survives while the steady noise is suppressed.
+            let burstOn = (i % 3072) < 768
+            let tone = burstOn ? sinf(2 * .pi * toneFreq * Float(i) / sr) * 0.6 : 0
             input[i] = tone + noise
         }
 
