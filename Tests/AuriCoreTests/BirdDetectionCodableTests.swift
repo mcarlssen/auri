@@ -153,6 +153,10 @@ final class BirdDetectionCodableTests: XCTestCase {
                 birdName: "American Robin",
                 scientificName: "Turdus migratorius",
                 confidence: 0.8,
+                // Whole-second timestamp: the .iso8601 codec drops fractional
+                // seconds, so a defaulted Date() would come back truncated and
+                // break the full-struct equality below.
+                timestamp: isoDate("2026-07-01T12:00:00Z"),
                 birdId: 101,
                 inferenceMs: 20,
                 verification: state
