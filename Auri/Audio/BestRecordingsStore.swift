@@ -26,7 +26,7 @@ struct BestRecording: Codable, Equatable, Identifiable {
 @MainActor
 final class BestRecordingsStore: ObservableObject {
     /// Best clip per species, keyed by birdId.
-    @Published private(set) var recordings: [Int: BestRecording]
+    @Published private(set) var recordings: [Int: BestRecording] = [:]
     /// The species whose clip is currently playing, so the UI can show state.
     @Published private(set) var playingBirdId: Int?
 
@@ -60,10 +60,10 @@ final class BestRecordingsStore: ObservableObject {
                 .appendingPathComponent("BestRecordings", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: resolvedDirectory, withIntermediateDirectories: true)
-        directory = resolvedDirectory
-        indexURL = resolvedDirectory.appendingPathComponent("index.json")
-        recordings = [:]
-        playingBirdId = nil
+        // `self.` is required here: the `directory` parameter shadows the stored
+        // property, and a bare assignment targets the immutable parameter.
+        self.directory = resolvedDirectory
+        self.indexURL = resolvedDirectory.appendingPathComponent("index.json")
         load()
     }
 
@@ -87,7 +87,10 @@ final class BestRecordingsStore: ObservableObject {
     /// observe the result without sleeping. Internal on purpose — production
     /// code calls `consider`.
     func considerAndWait(detection: BirdDetection, windowData: Data, sampleRate: Int) async {
-        await beginConsider(detection: detection, windowData: windowData, sampleRate: sampleRate)?.value
+        guard let task = beginConsider(detection: detection, windowData: windowData, sampleRate: sampleRate) else {
+            return
+        }
+        await task.value
     }
 
     func recording(forBirdId birdId: Int) -> BestRecording? {
@@ -155,53 +158,64 @@ final class BestRecordingsStore: ObservableObject {
         let tempURL = directory.appendingPathComponent("tmp-\(birdId)-\(UUID().uuidString).wav")
         let writeGeneration = generation
 
-        // BirdDetection isn't Sendable, so snapshot the fields the metadata needs
-        // rather than capturing it in the detached task.
-        let birdName = detection.birdName
-        let scientificName = detection.scientificName
-        let confidence = detection.confidence
-        let detectionId = detection.id
-        let recordedAt = detection.timestamp
+        // The clip's duration is fully determined by the packed sample count, so
+        // the whole metadata record can be built here on the main actor
+        // (BirdDetection isn't Sendable; BestRecording is). The detached task
+        // then only does file I/O and hands the finished record back.
+        let frameCount = windowData.count / MemoryLayout<Float>.size
+        let recording = BestRecording(
+            birdId: birdId,
+            detectionId: detection.id,
+            birdName: detection.birdName,
+            scientificName: detection.scientificName,
+            confidence: detection.confidence,
+            recordedAt: detection.timestamp,
+            fileName: fileName,
+            durationSeconds: Double(frameCount) / Double(sampleRate)
+        )
 
         return Task.detached(priority: .utility) { [weak self] in
             // Write to a temp file, then move it into place, so a failed or
             // interrupted write can't corrupt the species' existing best clip.
-            let duration = Self.writeWAV(data: windowData, sampleRate: sampleRate, to: tempURL)
-            let moved = duration != nil && Self.moveIntoPlace(from: tempURL, to: finalURL)
+            let wrote = Self.writeWAV(data: windowData, sampleRate: sampleRate, to: tempURL)
+            let moved = wrote && Self.moveIntoPlace(from: tempURL, to: finalURL)
             if !moved {
                 try? FileManager.default.removeItem(at: tempURL)
             }
-
-            await MainActor.run {
-                guard let self else { return }
-                self.writesInFlight.remove(birdId)
-                guard moved, let duration else {
-                    RecognitionLogger.log("best recording write failed for \(birdName)", category: "BestRecordings")
-                    return
-                }
-                guard self.generation == writeGeneration else {
-                    // Library was cleared mid-write; drop the now-orphaned clip.
-                    try? FileManager.default.removeItem(at: finalURL)
-                    return
-                }
-                let recording = BestRecording(
-                    birdId: birdId,
-                    detectionId: detectionId,
-                    birdName: birdName,
-                    scientificName: scientificName,
-                    confidence: confidence,
-                    recordedAt: recordedAt,
-                    fileName: fileName,
-                    durationSeconds: duration
-                )
-                self.recordings[birdId] = recording
-                self.saveIndex()
-                RecognitionLogger.log(
-                    "stored best recording for \(birdName) conf=\(String(format: "%.3f", confidence))",
-                    category: "BestRecordings"
-                )
-            }
+            // Rebind the weak capture once, at this closure's own scope, then hop
+            // back with a plain cross-actor call. Nesting the rebind inside
+            // another concurrent closure (e.g. MainActor.run) references a
+            // captured var from concurrently-executing code, which Swift 6
+            // rejects.
+            guard let self else { return }
+            await self.finishWrite(recording, succeeded: moved, writeGeneration: writeGeneration)
         }
+    }
+
+    /// Commit (or discard) a finished clip write, back on the main actor: release
+    /// the in-flight guard, then publish the metadata and save the index — but
+    /// only when the write landed and the library wasn't cleared while it ran.
+    private func finishWrite(_ recording: BestRecording, succeeded: Bool, writeGeneration: Int) {
+        writesInFlight.remove(recording.birdId)
+        guard succeeded else {
+            RecognitionLogger.log(
+                "best recording write failed for \(recording.birdName)",
+                category: "BestRecordings"
+            )
+            return
+        }
+        guard generation == writeGeneration else {
+            // Library was cleared mid-write; drop the now-orphaned clip.
+            try? FileManager.default.removeItem(at: fileURL(for: recording))
+            return
+        }
+        recordings[recording.birdId] = recording
+        saveIndex()
+        RecognitionLogger.log(
+            "stored best recording for \(recording.birdName) " +
+            "conf=\(String(format: "%.3f", recording.confidence))",
+            category: "BestRecordings"
+        )
     }
 
     // MARK: - Playback
@@ -213,11 +227,12 @@ final class BestRecordingsStore: ObservableObject {
         stop()
         do {
             let player = try AVAudioPlayer(contentsOf: url)
+            // The handler is @MainActor-typed, so this closure runs on the main
+            // actor and may touch store state directly; the delegate owns the
+            // hop from AVAudioPlayer's callback thread.
             let delegate = BestRecordingPlayerDelegate { [weak self] in
-                Task { @MainActor in
-                    guard let self, self.playingBirdId == birdId else { return }
-                    self.stop()
-                }
+                guard let self, self.playingBirdId == birdId else { return }
+                self.stop()
             }
             player.delegate = delegate
             self.player = player
@@ -254,13 +269,12 @@ final class BestRecordingsStore: ObservableObject {
     // MARK: - Files
 
     /// Write the packed Float32 mono `data` as a 16-bit PCM WAV at `url`, letting
-    /// `AVAudioFile` down-convert float→int16 on write. Returns the clip duration
-    /// in seconds, or nil when the data is unusable or the write fails. Pure and
-    /// `nonisolated` so it can run on the detached write task.
-    nonisolated private static func writeWAV(data: Data, sampleRate: Int, to url: URL) -> Double? {
-        guard sampleRate > 0, !data.isEmpty, data.count % MemoryLayout<Float>.size == 0 else { return nil }
+    /// `AVAudioFile` down-convert float→int16 on write. Returns whether the write
+    /// succeeded. Pure and `nonisolated` so it can run on the detached write task.
+    nonisolated private static func writeWAV(data: Data, sampleRate: Int, to url: URL) -> Bool {
+        guard sampleRate > 0, !data.isEmpty, data.count % MemoryLayout<Float>.size == 0 else { return false }
         let frameCount = data.count / MemoryLayout<Float>.size
-        guard frameCount > 0 else { return nil }
+        guard frameCount > 0 else { return false }
 
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
@@ -280,7 +294,7 @@ final class BestRecordingsStore: ObservableObject {
             pcmFormat: format,
             frameCapacity: AVAudioFrameCount(frameCount)
         ) else {
-            return nil
+            return false
         }
 
         buffer.frameLength = AVAudioFrameCount(frameCount)
@@ -301,10 +315,10 @@ final class BestRecordingsStore: ObservableObject {
             )
             try file.write(from: buffer)
         } catch {
-            return nil
+            return false
         }
 
-        return Double(frameCount) / Double(sampleRate)
+        return true
     }
 
     /// Replace whatever is at `finalURL` with `tempURL`. `nonisolated` so it runs
@@ -325,15 +339,21 @@ final class BestRecordingsStore: ObservableObject {
 }
 
 /// Bridges `AVAudioPlayer`'s completion callback — which can arrive off the main
-/// thread — back to the main actor so `playingBirdId` clears cleanly.
+/// thread — back to the main actor so `playingBirdId` clears cleanly. The handler
+/// is `@MainActor`-typed (main-actor closures are Sendable) and rebound to an
+/// immutable local before the hop, so no mutable capture crosses the concurrency
+/// boundary.
 private final class BestRecordingPlayerDelegate: NSObject, AVAudioPlayerDelegate {
-    private let onFinish: () -> Void
+    private let onFinish: @MainActor () -> Void
 
-    init(onFinish: @escaping () -> Void) {
+    init(onFinish: @escaping @MainActor () -> Void) {
         self.onFinish = onFinish
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        onFinish()
+        let onFinish = onFinish
+        Task { @MainActor in
+            onFinish()
+        }
     }
 }
