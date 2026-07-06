@@ -93,18 +93,6 @@ struct SettingsView: View {
                         .onChange(of: settings.noiseReductionCutoffHz) { _, _ in
                             viewModel.applyNoiseReduction()
                         }
-
-                        Toggle("Spectral noise gate (experimental)", isOn: $settings.spectralNoiseGateEnabled)
-                            .onChange(of: settings.spectralNoiseGateEnabled) { _, _ in
-                                viewModel.applyNoiseReduction()
-                            }
-
-                        if settings.spectralNoiseGateEnabled {
-                            Text("Can reduce steady fan hiss inside the 1–8 kHz bird band, but may introduce artifacts that lower detection accuracy. Compare detections with it on and off using the replayable clips.")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
 
                     Text("Noise reduction conditions the microphone input before analysis, cleaning the audio BirdNET hears, the retained clips, and the spectrogram together. Off by default — leave it off unless a machine-noisy mic (fan, hum) muddies detections.")

@@ -380,8 +380,7 @@ final class BirdDetectionViewModel: ObservableObject {
     func applyNoiseReduction() {
         audioHandler.setNoiseReduction(
             enabled: settings.noiseReductionEnabled,
-            cutoffHz: settings.noiseReductionCutoffHz,
-            spectralGateEnabled: settings.spectralNoiseGateEnabled
+            cutoffHz: settings.noiseReductionCutoffHz
         )
     }
 

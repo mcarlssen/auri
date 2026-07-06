@@ -198,14 +198,13 @@ final class AudioHandler: ObservableObject {
 
     /// Reconfigure input noise reduction. Runs on the main actor; the processing
     /// queue picks up the new config on its next buffer. Filter state is reset so
-    /// a settings change can't leave stale IIR/OLA memory behind. Mirrors
+    /// a settings change can't leave stale filter memory behind. Mirrors
     /// `setSilenceGate`'s concurrency model.
     @MainActor
-    func setNoiseReduction(enabled: Bool, cutoffHz: Double, spectralGateEnabled: Bool) {
+    func setNoiseReduction(enabled: Bool, cutoffHz: Double) {
         noiseReducer.configure(
             enabled: enabled,
             cutoffHz: cutoffHz,
-            spectralGateEnabled: spectralGateEnabled,
             sampleRate: Double(BirdNetCoreMLRecognizer.modelSampleRate)
         )
         noiseReducer.reset()
@@ -320,8 +319,7 @@ final class AudioHandler: ObservableObject {
         setSilenceGate(enabled: settings.silenceSkipEnabled, thresholdDB: settings.silenceSkipThresholdDB)
         setNoiseReduction(
             enabled: settings.noiseReductionEnabled,
-            cutoffHz: settings.noiseReductionCutoffHz,
-            spectralGateEnabled: settings.spectralNoiseGateEnabled
+            cutoffHz: settings.noiseReductionCutoffHz
         )
         windowAccumulator.resetSilentCount()
         lastPublishedSilentSkipCount = 0
