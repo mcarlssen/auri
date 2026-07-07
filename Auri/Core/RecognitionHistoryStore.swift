@@ -82,6 +82,21 @@ final class RecognitionHistoryStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Apply a verification state to every entry whose id is in `ids` — a grouped
+    /// feed entry confirms or rejects all its members at once. No-op (and no
+    /// write) when nothing actually changes, mirroring `remove(id:)`.
+    func setVerification(_ verification: DetectionVerification, forIds ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        var changed = false
+        entries = entries.map { entry in
+            guard ids.contains(entry.id), entry.verification != verification else { return entry }
+            changed = true
+            return entry.withVerification(verification)
+        }
+        guard changed else { return }
+        scheduleSave()
+    }
+
     /// Write any pending changes immediately; call before the app terminates.
     func flush() {
         guard pendingSave != nil else { return }
@@ -97,8 +112,11 @@ final class RecognitionHistoryStore: ObservableObject {
     }
 
     func speciesSummaries(search: String, sort: HistorySortOption, since: Date? = nil) -> [SpeciesHistorySummary] {
+        // Rejected entries are "not that bird", so they must not count toward the
+        // heard species list, its counts, or first/last-seen. They stay in
+        // `entries`, so the user can still see and un-reject them.
         var grouped: [Int: [BirdDetection]] = [:]
-        for entry in entries where since == nil || entry.timestamp >= since! {
+        for entry in entries where entry.verification != .rejected && (since == nil || entry.timestamp >= since!) {
             grouped[entry.birdId, default: []].append(entry)
         }
 
@@ -145,13 +163,32 @@ final class RecognitionHistoryStore: ObservableObject {
         return summaries
     }
 
+    /// Lifetime detections of a species, excluding rejected ones — the "★ First"
+    /// badge derives from this being 1, so it stays consistent as entries are
+    /// confirmed or rejected.
     func lifetimeCount(for birdId: Int) -> Int {
-        entries.filter { $0.birdId == birdId }.count
+        entries.filter { $0.birdId == birdId && $0.verification != .rejected }.count
+    }
+
+    /// How many of a species' entries the user has explicitly confirmed vs.
+    /// rejected. Unlike the heard-count methods, this counts rejected entries —
+    /// they are the whole point of the "· N rejected" summary.
+    func verificationCounts(forBirdId birdId: Int) -> (confirmed: Int, rejected: Int) {
+        var confirmed = 0
+        var rejected = 0
+        for entry in entries where entry.birdId == birdId {
+            switch entry.verification {
+            case .confirmed: confirmed += 1
+            case .rejected: rejected += 1
+            case .unverified: break
+            }
+        }
+        return (confirmed, rejected)
     }
 
     func uniqueSpecies(since date: Date) -> [SessionSpeciesSummary] {
         var grouped: [Int: [BirdDetection]] = [:]
-        for entry in entries where entry.timestamp >= date {
+        for entry in entries where entry.verification != .rejected && entry.timestamp >= date {
             grouped[entry.birdId, default: []].append(entry)
         }
 

@@ -266,4 +266,86 @@ final class RecognitionHistoryStoreTests: XCTestCase {
         XCTAssertEqual(zebraSummary?.detectionCount, 1)
         XCTAssertEqual(zebraSummary?.lastSeen, afterCutoffZ.timestamp)
     }
+
+    // MARK: - Verification
+
+    func testSetVerificationPersistsAcrossReload() {
+        let dir = makeTempDirectory()
+        defer { removeIfNeeded(dir) }
+
+        let store = RecognitionHistoryStore(directory: dir)
+        let first = make(birdName: "Robin", birdId: 1)
+        let second = make(birdName: "Robin", birdId: 1)
+        store.append(first)
+        store.append(second)
+
+        store.setVerification(.confirmed, forIds: [first.id, second.id])
+        XCTAssertEqual(store.entries.filter { $0.verification == .confirmed }.count, 2)
+
+        store.flush()
+        let reloaded = RecognitionHistoryStore(directory: dir)
+        XCTAssertEqual(reloaded.entries.filter { $0.verification == .confirmed }.count, 2)
+        XCTAssertEqual(reloaded.entries.first(where: { $0.id == first.id })?.verification, .confirmed)
+    }
+
+    func testRejectedEntriesExcludedFromHeardTalliesButRetained() {
+        let dir = makeTempDirectory()
+        defer { removeIfNeeded(dir) }
+
+        let store = RecognitionHistoryStore(directory: dir)
+        let cutoff = Date(timeIntervalSince1970: 1_700_000_000)
+
+        // Robin: two entries, one rejected. Sparrow: single entry, rejected.
+        let robinKept = make(birdName: "Robin", timestamp: cutoff.addingTimeInterval(10), birdId: 1)
+        let robinRejected = make(birdName: "Robin", timestamp: cutoff.addingTimeInterval(20), birdId: 1)
+        let sparrow = make(birdName: "Sparrow", timestamp: cutoff.addingTimeInterval(30), birdId: 2)
+        for detection in [robinKept, robinRejected, sparrow] {
+            store.append(detection)
+        }
+
+        store.setVerification(.rejected, forIds: [robinRejected.id, sparrow.id])
+
+        // lifetimeCount drops rejected entries.
+        XCTAssertEqual(store.lifetimeCount(for: 1), 1)
+        XCTAssertEqual(store.lifetimeCount(for: 2), 0)
+
+        // speciesSummaries: Robin keeps one, Sparrow (all rejected) disappears.
+        let summaries = store.speciesSummaries(search: "", sort: .name)
+        XCTAssertEqual(summaries.map(\.birdId), [1])
+        XCTAssertEqual(summaries.first?.totalCount, 1)
+
+        // uniqueSpecies excludes rejected as well.
+        let unique = store.uniqueSpecies(since: cutoff)
+        XCTAssertEqual(unique.map(\.birdId), [1])
+        XCTAssertEqual(unique.first?.detectionCount, 1)
+
+        // But rejected entries are retained so the user can review / un-reject.
+        XCTAssertEqual(store.entries.count, 3)
+        XCTAssertEqual(store.entries(forBirdId: 2).count, 1)
+    }
+
+    func testVerificationCounts() {
+        let dir = makeTempDirectory()
+        defer { removeIfNeeded(dir) }
+
+        let store = RecognitionHistoryStore(directory: dir)
+        let a = make(birdId: 7)
+        let b = make(birdId: 7)
+        let c = make(birdId: 7)
+        for detection in [a, b, c] {
+            store.append(detection)
+        }
+
+        store.setVerification(.confirmed, forIds: [a.id, b.id])
+        store.setVerification(.rejected, forIds: [c.id])
+
+        let counts = store.verificationCounts(forBirdId: 7)
+        XCTAssertEqual(counts.confirmed, 2)
+        XCTAssertEqual(counts.rejected, 1)
+
+        // A species with no entries reports zero for both.
+        let none = store.verificationCounts(forBirdId: 999)
+        XCTAssertEqual(none.confirmed, 0)
+        XCTAssertEqual(none.rejected, 0)
+    }
 }

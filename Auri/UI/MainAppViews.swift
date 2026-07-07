@@ -537,7 +537,9 @@ struct ListenView: View {
                                 onToggleClip: { audioClips.toggle(id: group.representative.id) },
                                 onHoverChanged: { hovering in
                                     highlightedBirdId = hovering ? group.representative.birdId : nil
-                                }
+                                },
+                                onConfirm: { viewModel.setVerification(group, to: .confirmed) },
+                                onReject: { viewModel.setVerification(group, to: .rejected) }
                             )
                         }
                     }
