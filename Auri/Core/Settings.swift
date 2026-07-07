@@ -292,6 +292,17 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Opt-in input noise reduction. Off by default: BirdNET tolerates real-world
+    /// noise, so conditioning only helps machine-noisy laptop mics.
+    @Published var noiseReductionEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Low-cut (high-pass) corner frequency, in Hz, used when noise reduction is on.
+    @Published var noiseReductionCutoffHz: Double {
+        didSet { save() }
+    }
+
     @Published var spectrogramFFTSize: SpectrogramFFTSize {
         didSet { save() }
     }
@@ -385,6 +396,8 @@ final class AppSettings: ObservableObject {
         debugLogging = defaults.object(forKey: "debugLogging") as? Bool ?? false
         bestRecordingsEnabled = defaults.object(forKey: "bestRecordingsEnabled") as? Bool ?? true
         inputGainDB = defaults.object(forKey: "inputGainDB") as? Double ?? 12
+        noiseReductionEnabled = defaults.object(forKey: "noiseReductionEnabled") as? Bool ?? false
+        noiseReductionCutoffHz = defaults.object(forKey: "noiseReductionCutoffHz") as? Double ?? 300
         let fftRaw = defaults.object(forKey: "spectrogramFFTSize") as? Int ?? SpectrogramFFTSize.size2048.rawValue
         spectrogramFFTSize = SpectrogramFFTSize(rawValue: fftRaw) ?? .size2048
         let overlapRaw = defaults.object(forKey: "spectrogramOverlap") as? Double ?? SpectrogramOverlap.sevenEighths.rawValue
@@ -467,6 +480,8 @@ final class AppSettings: ObservableObject {
         defaults.set(debugLogging, forKey: "debugLogging")
         defaults.set(bestRecordingsEnabled, forKey: "bestRecordingsEnabled")
         defaults.set(inputGainDB, forKey: "inputGainDB")
+        defaults.set(noiseReductionEnabled, forKey: "noiseReductionEnabled")
+        defaults.set(noiseReductionCutoffHz, forKey: "noiseReductionCutoffHz")
         defaults.set(spectrogramFFTSize.rawValue, forKey: "spectrogramFFTSize")
         defaults.set(spectrogramOverlap.rawValue, forKey: "spectrogramOverlap")
         defaults.set(spectrogramFrequencyScale.rawValue, forKey: "spectrogramFrequencyScale")

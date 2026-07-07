@@ -26,6 +26,7 @@ let package = Package(
                 "Models/RarityInfo.swift",
                 "Audio/AudioMeterStats.swift",
                 "Audio/AudioWindowNormalizer.swift",
+                "Audio/NoiseReduction.swift",
                 "Audio/SpectrogramEngine.swift",
                 "Audio/AudioFileLoader.swift",
                 "Audio/WindowAccumulator.swift",

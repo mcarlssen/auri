@@ -392,6 +392,13 @@ final class BirdDetectionViewModel: ObservableObject {
         )
     }
 
+    func applyNoiseReduction() {
+        audioHandler.setNoiseReduction(
+            enabled: settings.noiseReductionEnabled,
+            cutoffHz: settings.noiseReductionCutoffHz
+        )
+    }
+
     func bindOpenMainWindow(_ handler: @escaping () -> Void) {
         openMainWindowHandler = handler
     }

@@ -51,6 +51,10 @@ final class AudioHandler: ObservableObject {
         windowSampleCount: birdNetWindowSampleCount,
         hopByteCount: (birdNetWindowSampleCount / 2) * MemoryLayout<Float>.size
     )
+    // Opt-in input noise reduction. Touched only on `processingQueue` (inside
+    // `handle`); reconfigured from the main actor exactly like the silence gate
+    // and `windowAccumulator`, no separate locking.
+    private var noiseReducer = NoiseReducer()
     private var lastPublishedSilentSkipCount: UInt64 = 0
     @Published private(set) var silentWindowsSkipped: UInt64 = 0
     private var bufferCount: UInt64 = 0
@@ -192,6 +196,20 @@ final class AudioHandler: ObservableObject {
         windowAccumulator.silenceGateThresholdLinear = Float(pow(10, thresholdDB / 20))
     }
 
+    /// Reconfigure input noise reduction. Runs on the main actor; the processing
+    /// queue picks up the new config on its next buffer. Filter state is reset so
+    /// a settings change can't leave stale filter memory behind. Mirrors
+    /// `setSilenceGate`'s concurrency model.
+    @MainActor
+    func setNoiseReduction(enabled: Bool, cutoffHz: Double) {
+        noiseReducer.configure(
+            enabled: enabled,
+            cutoffHz: cutoffHz,
+            sampleRate: Double(BirdNetCoreMLRecognizer.modelSampleRate)
+        )
+        noiseReducer.reset()
+    }
+
     /// Views displaying the spectrogram register here; the FFT/render pipeline
     /// only runs while at least one observer is visible.
     @MainActor
@@ -299,6 +317,10 @@ final class AudioHandler: ObservableObject {
             windowSamples: Self.birdNetWindowSampleCount
         ) * MemoryLayout<Float>.size
         setSilenceGate(enabled: settings.silenceSkipEnabled, thresholdDB: settings.silenceSkipThresholdDB)
+        setNoiseReduction(
+            enabled: settings.noiseReductionEnabled,
+            cutoffHz: settings.noiseReductionCutoffHz
+        )
         windowAccumulator.resetSilentCount()
         lastPublishedSilentSkipCount = 0
         silentWindowsSkipped = 0
@@ -404,6 +426,9 @@ final class AudioHandler: ObservableObject {
         guard !monoBuffer.isEmpty else { return }
 
         applyInputGain(to: &monoBuffer)
+        // Clean the audio once, here, so the analyzed window, the retained clip,
+        // the spectrogram, and the level meter all see the same conditioned signal.
+        noiseReducer.process(&monoBuffer)
 
         publishStats(from: monoBuffer)
         submitSpectrogramSamples(monoBuffer)
