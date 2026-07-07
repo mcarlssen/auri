@@ -307,13 +307,15 @@ final class SpectralNoiseReducerTests: XCTestCase {
         XCTAssertLessThan(profile[toneBin], 3 * avgNoise)
     }
 
-    /// Step 2: a continuously (fast-)swept tone is non-stationary every frame, so
-    /// no frame is ever accepted — the profile is never even established.
+    /// Step 2: a continuously swept tone is peaky (low spectral flatness) every
+    /// frame — its energy stays concentrated in the swept bins, including the fast
+    /// intra-frame chirp — so no frame is ever admitted; the profile is never even
+    /// established.
     func testSweptToneRejectedFromProfile() {
         let total = 96_000
         var signal = [Float](repeating: 0, count: total)
-        // Sweep 2 kHz→10 kHz over 0.25 s, repeating — several bins of motion per
-        // hop, far faster than any steady machine tone.
+        // A fast, repeating frequency sweep: energy stays concentrated in a small
+        // fraction of bins every frame, far from the flat spectrum of noise.
         let sweepSamples = 12_000
         for i in 0..<total {
             let p = Float(i % sweepSamples) / Float(sweepSamples)

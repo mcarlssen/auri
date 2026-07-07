@@ -291,21 +291,23 @@ final class STFTProcessor {
 ///
 /// A frame updates the noise estimate ONLY when it is both (a) quiet — its
 /// broadband energy is within a small factor of the tracked noise-floor energy —
-/// and (b) spectrally stationary — its magnitude spectrum is close to a fast
-/// running average of recent spectra. Machine noise is steady on both counts;
-/// birdsong (transient, moving in frequency) fails at least one, so it never
-/// enters the profile. The estimate is a slow per-bin EMA.
+/// and (b) spectrally flat — its energy is spread across the spectrum (high
+/// Wiener entropy) rather than concentrated in a few bins. Broadband machine
+/// noise passes both; a tone or chirp is peaky (low flatness), and birdsong is
+/// tonal/transient, so neither enters the profile. The estimate is a slow per-bin
+/// EMA. Flatness — not a frame-to-frame distance — is the spectral gate, because a
+/// fast chirp is self-similar frame to frame (a broad intra-frame smear) yet must
+/// still be rejected.
 final class SpectralNoiseReducer {
     private let stft: STFTProcessor
     private let n: Int
 
-    // Noise estimate and stationarity state (length n, conjugate-symmetric like
-    // the magnitude spectra they are built from).
+    // Noise estimate state (length n, conjugate-symmetric like the magnitude
+    // spectra it is built from).
     private var profile: [Float]     // slow EMA noise magnitude — the subtraction target
-    private var recentMag: [Float]   // fast EMA of magnitudes — the stationarity reference
     private var profileInitialized = false
-    private var recentInitialized = false
     private var noiseEnergyEMA: Float = 0
+    private var energyInitialized = false
 
     // Tuning. Conservative by design: over-subtraction factor slightly above 1
     // and a non-zero floor so no bin is ever fully nulled (nulling injects
@@ -313,29 +315,28 @@ final class SpectralNoiseReducer {
     private let beta: Float = 1.5
     private let floorGain: Float = 0.15
     private let profileAlpha: Float = 0.05   // slow: the noise floor is near-stationary
-    private let recentAlpha: Float = 0.3     // fast: tracks "what just happened"
     private let energyAlpha: Float = 0.05
     private let energyGateFactor: Float = 2  // "quiet" = energy ≤ 2× tracked floor
-    // Normalized L1 spectral distance above which a frame is "not stationary".
-    // Steady broadband noise sits well below (~0.4–0.6, the natural frame-to-frame
-    // magnitude scatter); a moving/appearing tone drives it far higher (a swept
-    // tone ≈ 2). Set between the two with margin; loud events are additionally
-    // caught by the energy gate.
-    private let stationarityThreshold: Float = 1.0
+    // Spectral-flatness (Wiener entropy) floor for admitting a frame to the
+    // profile. Broadband noise is high (≈0.56 for a Gaussian-bin spectrum); any
+    // tone or chirp concentrates energy in a few bins and collapses flatness
+    // toward 0. Gating on flatness rejects tonal content whether steady OR
+    // sweeping — unlike a frame-to-frame distance, which a fast chirp defeats by
+    // being self-similar frame to frame.
+    private let flatnessThreshold: Float = 0.3
     private let magEps: Float = 1e-9
 
     init(n: Int = 1024) {
         self.n = n
         self.stft = STFTProcessor(n: n)
         self.profile = [Float](repeating: 0, count: n)
-        self.recentMag = [Float](repeating: 0, count: n)
     }
 
     func reset() {
         stft.reset()
-        for i in 0..<n { profile[i] = 0; recentMag[i] = 0 }
+        for i in 0..<n { profile[i] = 0 }
         profileInitialized = false
-        recentInitialized = false
+        energyInitialized = false
         noiseEnergyEMA = 0
     }
 
@@ -352,45 +353,28 @@ final class SpectralNoiseReducer {
         }
     }
 
-    /// Per frame: fold the frame into the running references, decide whether it is
-    /// noise-only and (if so) update the profile, then return the subtraction gain.
+    /// Per frame: decide whether it is noise-only — (a) quiet AND (b) spectrally
+    /// flat — and, if so, fold it into the noise profile; then return the
+    /// subtraction gain.
     private func updateProfileAndComputeGain(magnitudes mags: [Float]) -> [Float] {
+        // Arithmetic-mean power == frame broadband energy.
         var energy: Float = 0
         for i in 0..<n { energy += mags[i] * mags[i] }
         energy /= Float(n)
 
-        // The very first frame only seeds the references; it is never itself
-        // accepted, so an opening transient can't bootstrap a bogus profile.
-        let seeding = !recentInitialized
-        if seeding {
-            for i in 0..<n { recentMag[i] = mags[i] }
-            recentInitialized = true
+        // Track the noise-floor energy: seed on the first frame, then follow it
+        // downward quickly (a drop is unambiguously toward noise/silence) so the
+        // "quiet" gate can't get stuck above a falling floor.
+        if !energyInitialized {
             noiseEnergyEMA = energy
+            energyInitialized = true
+        } else if energy < noiseEnergyEMA {
+            noiseEnergyEMA += energyAlpha * (energy - noiseEnergyEMA)
         }
 
-        var accepted = false
-        if !seeding {
-            // Stationarity: normalized L1 distance to the PRIOR recent average
-            // (computed before folding this frame in).
-            var num: Float = 0
-            var den: Float = 0
-            for i in 0..<n {
-                num += abs(mags[i] - recentMag[i])
-                den += recentMag[i]
-            }
-            let distance = den > magEps ? num / den : .greatestFiniteMagnitude
-            let stationary = distance <= stationarityThreshold
-
-            // Let the floor follow downward quickly (a drop is unambiguously
-            // noise/silence) so the gate can't get stuck above a falling floor.
-            if energy < noiseEnergyEMA {
-                noiseEnergyEMA += energyAlpha * (energy - noiseEnergyEMA)
-            }
-            let quiet = energy <= energyGateFactor * noiseEnergyEMA
-            accepted = stationary && quiet
-
-            for i in 0..<n { recentMag[i] += recentAlpha * (mags[i] - recentMag[i]) }
-        }
+        let quiet = energy <= energyGateFactor * noiseEnergyEMA
+        let flat = spectralFlatness(magnitudes: mags, arithMeanPower: energy) >= flatnessThreshold
+        let accepted = quiet && flat
 
         if accepted {
             if !profileInitialized {
@@ -413,6 +397,29 @@ final class SpectralNoiseReducer {
             }
         }
         return gain
+    }
+
+    /// Wiener entropy (spectral flatness): geometric mean ÷ arithmetic mean of the
+    /// power spectrum, in [0, 1]. High for broadband noise (energy in every bin,
+    /// ≈0.56 for a Gaussian-bin spectrum), near 0 for a tone or chirp (energy in a
+    /// few bins pulls the geometric mean toward the near-empty ones). The
+    /// arithmetic mean is passed in — the caller already computed it as the frame
+    /// energy.
+    private func spectralFlatness(magnitudes mags: [Float], arithMeanPower: Float) -> Float {
+        // Silence (or numerically flat): trivially flat, and admitting it only
+        // sets a zero profile, so treat as flat and sidestep a 0/0.
+        guard arithMeanPower > 1e-20 else { return 1 }
+        // Floor each bin's power far below the mean so a near-empty bin yields a
+        // large negative log (collapsing the geometric mean for a peaky spectrum)
+        // without ever hitting log(0).
+        let floorPower = Double(arithMeanPower) * 1e-9
+        var logSum = 0.0
+        for i in 0..<n {
+            let power = Double(mags[i]) * Double(mags[i])
+            logSum += log(max(power, floorPower))
+        }
+        let geoMean = exp(logSum / Double(n))
+        return Float(geoMean / Double(arithMeanPower))
     }
 }
 
