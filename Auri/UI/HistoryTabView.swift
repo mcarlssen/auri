@@ -47,6 +47,18 @@ struct HistoryTabView: View {
         historyStore.speciesSummaries(search: searchText, sort: sortOption, since: sinceDate)
     }
 
+    /// Species with any detection since Jan 1 of the current year.
+    private var thisYearSpeciesCount: Int {
+        let startOfYear = Calendar.current.date(
+            from: Calendar.current.dateComponents([.year], from: Date())
+        )
+        return historyStore.speciesCount(since: startOfYear)
+    }
+
+    private var todaySpeciesCount: Int {
+        historyStore.speciesCount(since: Calendar.current.startOfDay(for: Date()))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Heard")
@@ -66,6 +78,13 @@ struct HistoryTabView: View {
 
             if scope == .lifetime, !viewModel.expectedNearby.isEmpty {
                 expectedNearbySection
+            }
+
+            HStack(spacing: 12) {
+                statTile(historyStore.speciesCount(since: nil), "Lifetime species")
+                statTile(thisYearSpeciesCount, "This year")
+                statTile(todaySpeciesCount, "Today")
+                statTile(historyStore.totalDetectionCount, "Detections")
             }
 
             HStack(spacing: 12) {
@@ -117,6 +136,7 @@ struct HistoryTabView: View {
                             SpeciesHistoryCard(
                                 summary: summary,
                                 entries: historyStore.entries(forBirdId: summary.birdId),
+                                showNewThisYearBadge: showNewThisYearBadge(for: summary),
                                 viewModel: viewModel
                             )
                         }
@@ -215,11 +235,30 @@ struct HistoryTabView: View {
     private func displayScientificName(_ name: String) -> String {
         name.prefix(1).uppercased() + name.dropFirst()
     }
+    private func statTile(_ value: Int, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.title3.monospacedDigit().bold())
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The blue "New this year" pill marks a lifetime-list species first heard
+    /// this calendar year. Only shown in the lifetime scope, where the list spans
+    /// years; the session/today scopes are already time-bounded.
+    private func showNewThisYearBadge(for summary: SpeciesHistorySummary) -> Bool {
+        guard scope == .lifetime else { return false }
+        return Calendar.current.isDate(summary.firstSeen, equalTo: Date(), toGranularity: .year)
+    }
 }
 
 struct SpeciesHistoryCard: View {
     let summary: SpeciesHistorySummary
     let entries: [BirdDetection]
+    let showNewThisYearBadge: Bool
     @ObservedObject var viewModel: BirdDetectionViewModel
 
     var body: some View {
@@ -235,14 +274,25 @@ struct SpeciesHistoryCard: View {
                     onIgnore: { viewModel.ignore(detection: detection) },
                     onDelete: { viewModel.deleteDetection(detection) },
                     onSubmit: { viewModel.submitToEBirdSheet(for: detection) },
-                    onOpenInfo: { viewModel.openEBirdInfo(for: detection) }
+                    onOpenInfo: { viewModel.openEBirdInfo(for: detection) },
+                    onConfirm: { viewModel.setVerification(DetectionGroup(detections: [detection]), to: .confirmed) },
+                    onReject: { viewModel.setVerification(DetectionGroup(detections: [detection]), to: .rejected) }
                 )
             }
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(summary.birdName)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(summary.birdName)
+                            .font(.headline)
+                        if showNewThisYearBadge {
+                            Text("New this year")
+                                .font(.caption2)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 1.5)
+                                .background(.blue.opacity(0.25), in: Capsule())
+                        }
+                    }
                     Text(summary.scientificName)
                         .font(.caption.italic())
                         .foregroundStyle(.secondary)
@@ -254,6 +304,11 @@ struct SpeciesHistoryCard: View {
                     Text(seenSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let verificationSummary {
+                        Text(verificationSummary)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if let rarity = summary.rarity {
                         Text(rarity.displayLabel)
                             .font(.caption2)
@@ -281,6 +336,16 @@ struct SpeciesHistoryCard: View {
         let last = "last \(summary.lastSeen.formatted(date: .abbreviated, time: .shortened))"
         guard summary.totalCount > 1 else { return last }
         return "\(last) · first \(summary.firstSeen.formatted(date: .abbreviated, time: .omitted))"
+    }
+
+    /// "12 confirmed · 1 rejected" under the seen-summary line — omitted entirely
+    /// when the user hasn't verified any of this species' detections.
+    private var verificationSummary: String? {
+        let counts = viewModel.historyStore.verificationCounts(forBirdId: summary.birdId)
+        var parts: [String] = []
+        if counts.confirmed > 0 { parts.append("\(counts.confirmed) confirmed") }
+        if counts.rejected > 0 { parts.append("\(counts.rejected) rejected") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func rarityBackground(_ rarity: RarityInfo) -> Color {

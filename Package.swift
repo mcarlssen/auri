@@ -16,6 +16,7 @@ let package = Package(
                 "Core/Cooldown.swift",
                 "Core/DetectionCorroborator.swift",
                 "Core/ExpectedNearbyBuilder.swift",
+                "Core/DailyDigestBuilder.swift",
                 "Core/ConfidenceRollingEstimator.swift",
                 "Core/IgnoreList.swift",
                 "Core/RecognitionHistoryStore.swift",

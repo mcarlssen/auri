@@ -5,6 +5,14 @@ enum DetectionSource: String, Codable, Hashable {
     case file
 }
 
+/// A user's verdict on a detection. Unverified is the default; `.confirmed`
+/// ("I heard this bird") gives the observation a human-verified basis, while
+/// `.rejected` ("not this bird") drops it from the heard tallies without
+/// deleting it — so it can still be reviewed and un-rejected later.
+enum DetectionVerification: String, Codable, Hashable {
+    case unverified, confirmed, rejected
+}
+
 struct BirdDetection: Identifiable, Hashable {
     let id: UUID
     let birdName: String
@@ -17,6 +25,7 @@ struct BirdDetection: Identifiable, Hashable {
     let sourceFileName: String?
     let audioOffsetSeconds: Double?
     let rarity: RarityInfo?
+    let verification: DetectionVerification
 
     init(
         id: UUID = UUID(),
@@ -29,7 +38,8 @@ struct BirdDetection: Identifiable, Hashable {
         source: DetectionSource = .live,
         sourceFileName: String? = nil,
         audioOffsetSeconds: Double? = nil,
-        rarity: RarityInfo? = nil
+        rarity: RarityInfo? = nil,
+        verification: DetectionVerification = .unverified
     ) {
         self.id = id
         self.birdName = birdName
@@ -42,6 +52,27 @@ struct BirdDetection: Identifiable, Hashable {
         self.sourceFileName = sourceFileName
         self.audioOffsetSeconds = audioOffsetSeconds
         self.rarity = rarity
+        self.verification = verification
+    }
+
+    /// A copy with a new verification state. The stored fields are `let`, so
+    /// rebuild through the memberwise init rather than mutating; `id`,
+    /// `timestamp`, and every other field are carried over unchanged.
+    func withVerification(_ verification: DetectionVerification) -> BirdDetection {
+        BirdDetection(
+            id: id,
+            birdName: birdName,
+            scientificName: scientificName,
+            confidence: confidence,
+            timestamp: timestamp,
+            birdId: birdId,
+            inferenceMs: inferenceMs,
+            source: source,
+            sourceFileName: sourceFileName,
+            audioOffsetSeconds: audioOffsetSeconds,
+            rarity: rarity,
+            verification: verification
+        )
     }
 }
 
@@ -58,6 +89,7 @@ extension BirdDetection: Codable {
         case sourceFileName
         case audioOffsetSeconds
         case rarity
+        case verification
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +105,7 @@ extension BirdDetection: Codable {
         sourceFileName = try container.decodeIfPresent(String.self, forKey: .sourceFileName)
         audioOffsetSeconds = try container.decodeIfPresent(Double.self, forKey: .audioOffsetSeconds)
         rarity = try container.decodeIfPresent(RarityInfo.self, forKey: .rarity)
+        verification = try container.decodeIfPresent(DetectionVerification.self, forKey: .verification) ?? .unverified
     }
 }
 
@@ -102,6 +135,21 @@ struct DetectionGroup: Identifiable {
 
     var firstSeen: Date { detections.map(\.timestamp).min() ?? representative.timestamp }
     var lastSeen: Date { detections.map(\.timestamp).max() ?? representative.timestamp }
+
+    /// The group's verification state, aggregated over its members. A single
+    /// confirmation wins (any member confirmed → `.confirmed`); a group counts
+    /// as rejected only when every member is rejected; otherwise `.unverified`.
+    /// Confirm/reject in the UI writes all members at once, but history entries
+    /// can be regrouped independently, so aggregate defensively.
+    var verification: DetectionVerification {
+        if detections.contains(where: { $0.verification == .confirmed }) {
+            return .confirmed
+        }
+        if detections.allSatisfy({ $0.verification == .rejected }) {
+            return .rejected
+        }
+        return .unverified
+    }
 
     /// Collapse consecutive runs of the same species+source. Non-adjacent runs
     /// stay separate so chronology is preserved (A, B, A → three groups).

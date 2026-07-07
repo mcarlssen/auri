@@ -198,6 +198,22 @@ struct SettingsView: View {
                             step: 5
                         )
                     }
+
+                    Toggle("Daily digest", isOn: $settings.digestEnabled)
+                        .disabled(!settings.notificationsEnabled)
+
+                    if settings.digestEnabled {
+                        Picker("Deliver after", selection: $settings.digestHour) {
+                            ForEach(0..<24) { hour in
+                                Text(Self.hourLabel(hour)).tag(hour)
+                            }
+                        }
+                        .disabled(!settings.notificationsEnabled)
+
+                        Text("A single morning summary of yesterday's species. Sent while Auri is running, after the chosen hour.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Location & rarity") {
@@ -340,6 +356,13 @@ struct SettingsView: View {
             return minutes == 1 ? "1 minute" : "\(minutes) minutes"
         }
         return "\(Int(seconds)) seconds"
+    }
+
+    /// "6 AM" / "12 PM" style label for the digest delivery-hour picker.
+    private static func hourLabel(_ hour: Int) -> String {
+        let period = hour < 12 ? "AM" : "PM"
+        let twelve = hour % 12 == 0 ? 12 : hour % 12
+        return "\(twelve) \(period)"
     }
 
     private func loadDevices() {

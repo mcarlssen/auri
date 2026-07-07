@@ -18,6 +18,8 @@ struct DetectionCardView: View {
     let isPlayingClip: Bool
     let onToggleClip: () -> Void
     let onHoverChanged: (Bool) -> Void
+    let onConfirm: () -> Void
+    let onReject: () -> Void
 
     @State private var isHovering = false
 
@@ -37,7 +39,9 @@ struct DetectionCardView: View {
         onSubmit: @escaping () -> Void,
         onOpenInfo: @escaping () -> Void = {},
         onToggleClip: @escaping () -> Void = {},
-        onHoverChanged: @escaping (Bool) -> Void = { _ in }
+        onHoverChanged: @escaping (Bool) -> Void = { _ in },
+        onConfirm: @escaping () -> Void = {},
+        onReject: @escaping () -> Void = {}
     ) {
         self.group = group
         self.lifetimeCount = lifetimeCount
@@ -51,6 +55,8 @@ struct DetectionCardView: View {
         self.onOpenInfo = onOpenInfo
         self.onToggleClip = onToggleClip
         self.onHoverChanged = onHoverChanged
+        self.onConfirm = onConfirm
+        self.onReject = onReject
     }
 
     /// Single-detection card (History, file analysis) — wraps one detection.
@@ -66,7 +72,9 @@ struct DetectionCardView: View {
         onSubmit: @escaping () -> Void,
         onOpenInfo: @escaping () -> Void = {},
         onToggleClip: @escaping () -> Void = {},
-        onHoverChanged: @escaping (Bool) -> Void = { _ in }
+        onHoverChanged: @escaping (Bool) -> Void = { _ in },
+        onConfirm: @escaping () -> Void = {},
+        onReject: @escaping () -> Void = {}
     ) {
         self.init(
             group: DetectionGroup(detections: [detection]),
@@ -80,13 +88,20 @@ struct DetectionCardView: View {
             onSubmit: onSubmit,
             onOpenInfo: onOpenInfo,
             onToggleClip: onToggleClip,
-            onHoverChanged: onHoverChanged
+            onHoverChanged: onHoverChanged,
+            onConfirm: onConfirm,
+            onReject: onReject
         )
     }
 
+    /// Rejected cards drop their rarity coloring for a muted `.secondary` stripe,
+    /// signaling "not that bird" at a glance.
     private var stripeColor: Color {
-        detection.rarity?.level == .unusual ? .orange : .green
+        if group.verification == .rejected { return .secondary }
+        return detection.rarity?.level == .unusual ? .orange : .green
     }
+
+    private var isRejected: Bool { group.verification == .rejected }
 
     private var isUnusual: Bool {
         detection.rarity?.level == .unusual
@@ -127,6 +142,33 @@ struct DetectionCardView: View {
             case .unknown:
                 EmptyView()
             }
+        }
+    }
+
+    /// Confirmed/rejected status chip shown beside the confidence band. Nothing
+    /// for unverified detections, so the row is unchanged from today.
+    @ViewBuilder
+    private var verificationChip: some View {
+        switch group.verification {
+        case .confirmed:
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.seal.fill")
+                Text("Verified")
+            }
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(.green.opacity(0.18), in: Capsule())
+            .foregroundStyle(.green)
+        case .rejected:
+            Text("Rejected")
+                .font(.caption2.weight(.medium))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.18), in: Capsule())
+                .foregroundStyle(.secondary)
+        case .unverified:
+            EmptyView()
         }
     }
 
@@ -177,6 +219,8 @@ struct DetectionCardView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(confidenceBand.color)
 
+                verificationChip
+
                 if isFirstEver {
                     Text("★ First")
                         .font(.caption2.weight(.semibold))
@@ -197,6 +241,9 @@ struct DetectionCardView: View {
             }
             .padding(.top, 2)
         }
+        // Dim only the card's content when rejected; the leading stripe, hover
+        // actions, and background stay crisp so the un-reject control is legible.
+        .opacity(isRejected ? 0.55 : 1)
         .padding(.vertical, 10)
         .padding(.leading, 14)
         .padding(.trailing, 12)
@@ -220,6 +267,9 @@ struct DetectionCardView: View {
             onHoverChanged(hovering)
         }
         .contextMenu {
+            Button(group.verification == .confirmed ? "Confirmed ✓" : "Confirm", action: onConfirm)
+            Button(group.verification == .rejected ? "Rejected ✕" : "Reject", action: onReject)
+            Divider()
             Button("View on eBird", action: onOpenInfo)
             Button("Submit to eBird", action: onSubmit)
             Button("Mute species", action: onIgnore)
@@ -229,6 +279,8 @@ struct DetectionCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
+        .accessibilityAction(named: "Confirm", onConfirm)
+        .accessibilityAction(named: "Reject", onReject)
         .accessibilityAction(named: "View on eBird", onOpenInfo)
         .accessibilityAction(named: "Submit to eBird", onSubmit)
         .accessibilityAction(named: "Mute species", onIgnore)
@@ -265,6 +317,20 @@ struct DetectionCardView: View {
     private var hoverActions: some View {
         HStack(spacing: 5) {
             cardActionButton(
+                systemImage: "checkmark",
+                help: "Confirm — I heard this bird",
+                isActive: group.verification == .confirmed,
+                activeTint: .green,
+                action: onConfirm
+            )
+            cardActionButton(
+                systemImage: "xmark",
+                help: "Reject — not this bird",
+                isActive: group.verification == .rejected,
+                activeTint: .secondary,
+                action: onReject
+            )
+            cardActionButton(
                 systemImage: "info.circle",
                 help: "View \(detection.birdName) on eBird",
                 action: onOpenInfo
@@ -293,6 +359,8 @@ struct DetectionCardView: View {
         systemImage: String,
         help: String,
         role: ButtonRole? = nil,
+        isActive: Bool = false,
+        activeTint: Color? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(role: role, action: action) {
@@ -302,6 +370,9 @@ struct DetectionCardView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+        // Tint the button while its state is active so the toggle (click again to
+        // clear) is discoverable; inactive buttons keep the default appearance.
+        .tint(isActive ? activeTint : nil)
         .help(help)
         .accessibilityLabel(help)
     }
@@ -311,6 +382,11 @@ struct DetectionCardView: View {
             detection.birdName,
             String(format: "%.0f percent confidence", group.peakConfidence * 100)
         ]
+        switch group.verification {
+        case .confirmed: parts.append("confirmed")
+        case .rejected: parts.append("rejected")
+        case .unverified: break
+        }
         if group.count > 1 {
             parts.append("\(group.count) detections")
         }
