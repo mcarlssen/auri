@@ -78,30 +78,47 @@ struct SettingsView: View {
                         viewModel.audioHandler.setInputGain(dB: gain)
                     }
 
-                    Toggle("Reduce input noise", isOn: $settings.noiseReductionEnabled)
-                        .onChange(of: settings.noiseReductionEnabled) { _, _ in
-                            viewModel.applyNoiseReduction()
+                    // Grouped so the noise-reduction controls count as ONE child of
+                    // the Listening Section (SwiftUI's ViewBuilder caps a container
+                    // at 10 direct subviews; the section is otherwise already near it).
+                    Group {
+                        Toggle("Reduce input noise", isOn: $settings.noiseReductionEnabled)
+                            .onChange(of: settings.noiseReductionEnabled) { _, _ in
+                                viewModel.applyNoiseReduction()
+                            }
+
+                        if settings.noiseReductionEnabled {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Low-cut filter: \(Int(settings.noiseReductionCutoffHz)) Hz")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Slider(value: $settings.noiseReductionCutoffHz, in: 80...2000, step: 10)
+                                Text("Higher cutoffs remove more fan rumble and hum but can clip low-frequency species (doves, owls).")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .onChange(of: settings.noiseReductionCutoffHz) { _, _ in
+                                viewModel.applyNoiseReduction()
+                            }
                         }
 
-                    if settings.noiseReductionEnabled {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Low-cut filter: \(Int(settings.noiseReductionCutoffHz)) Hz")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $settings.noiseReductionCutoffHz, in: 80...2000, step: 10)
-                            Text("Higher cutoffs remove more fan rumble and hum but can clip low-frequency species (doves, owls).")
+                        Toggle("Spectral noise reduction (experimental)", isOn: $settings.spectralNoiseReductionEnabled)
+                            .onChange(of: settings.spectralNoiseReductionEnabled) { _, _ in
+                                viewModel.applyNoiseReduction()
+                            }
+
+                        if settings.spectralNoiseReductionEnabled {
+                            Text("Reduces steady fan/hiss and tonal noise by learning your environment's noise spectrum and subtracting it. Experimental: it can affect detection either way, so compare on/off using the replayable clips before relying on it.")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .onChange(of: settings.noiseReductionCutoffHz) { _, _ in
-                            viewModel.applyNoiseReduction()
-                        }
-                    }
 
-                    Text("Noise reduction conditions the microphone input before analysis, cleaning the audio BirdNET hears, the retained clips, and the spectrogram together. Off by default — leave it off unless a machine-noisy mic (fan, hum) muddies detections.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Text("Noise reduction conditions the microphone input before analysis, cleaning the audio BirdNET hears, the retained clips, and the spectrogram together. Off by default — leave it off unless a machine-noisy mic (fan, hum) muddies detections.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Picker("Spectrogram scale", selection: $settings.spectrogramFrequencyScale) {
                         ForEach(SpectrogramFrequencyScale.allCases) { scale in
