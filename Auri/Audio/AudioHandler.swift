@@ -201,10 +201,11 @@ final class AudioHandler: ObservableObject {
     /// a settings change can't leave stale filter memory behind. Mirrors
     /// `setSilenceGate`'s concurrency model.
     @MainActor
-    func setNoiseReduction(enabled: Bool, cutoffHz: Double) {
+    func setNoiseReduction(enabled: Bool, cutoffHz: Double, spectralEnabled: Bool = false) {
         noiseReducer.configure(
             enabled: enabled,
             cutoffHz: cutoffHz,
+            spectralEnabled: spectralEnabled,
             sampleRate: Double(BirdNetCoreMLRecognizer.modelSampleRate)
         )
         noiseReducer.reset()
@@ -319,7 +320,8 @@ final class AudioHandler: ObservableObject {
         setSilenceGate(enabled: settings.silenceSkipEnabled, thresholdDB: settings.silenceSkipThresholdDB)
         setNoiseReduction(
             enabled: settings.noiseReductionEnabled,
-            cutoffHz: settings.noiseReductionCutoffHz
+            cutoffHz: settings.noiseReductionCutoffHz,
+            spectralEnabled: settings.spectralNoiseReductionEnabled
         )
         windowAccumulator.resetSilentCount()
         lastPublishedSilentSkipCount = 0

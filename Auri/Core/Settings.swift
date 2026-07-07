@@ -303,6 +303,15 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Opt-in, EXPERIMENTAL profile-based spectral noise reduction. Off by default:
+    /// it learns the environment's steady noise spectrum and subtracts it per
+    /// frequency bin, which can affect detection, so users should compare on/off on
+    /// their own recordings (see NOISE_REDUCTION_EVAL.md). Independent of the
+    /// high-pass toggle; when both are on the high-pass runs first as a pre-clean.
+    @Published var spectralNoiseReductionEnabled: Bool {
+        didSet { save() }
+    }
+
     @Published var spectrogramFFTSize: SpectrogramFFTSize {
         didSet { save() }
     }
@@ -398,6 +407,7 @@ final class AppSettings: ObservableObject {
         inputGainDB = defaults.object(forKey: "inputGainDB") as? Double ?? 12
         noiseReductionEnabled = defaults.object(forKey: "noiseReductionEnabled") as? Bool ?? false
         noiseReductionCutoffHz = defaults.object(forKey: "noiseReductionCutoffHz") as? Double ?? 300
+        spectralNoiseReductionEnabled = defaults.object(forKey: "spectralNoiseReductionEnabled") as? Bool ?? false
         let fftRaw = defaults.object(forKey: "spectrogramFFTSize") as? Int ?? SpectrogramFFTSize.size2048.rawValue
         spectrogramFFTSize = SpectrogramFFTSize(rawValue: fftRaw) ?? .size2048
         let overlapRaw = defaults.object(forKey: "spectrogramOverlap") as? Double ?? SpectrogramOverlap.sevenEighths.rawValue
@@ -482,6 +492,7 @@ final class AppSettings: ObservableObject {
         defaults.set(inputGainDB, forKey: "inputGainDB")
         defaults.set(noiseReductionEnabled, forKey: "noiseReductionEnabled")
         defaults.set(noiseReductionCutoffHz, forKey: "noiseReductionCutoffHz")
+        defaults.set(spectralNoiseReductionEnabled, forKey: "spectralNoiseReductionEnabled")
         defaults.set(spectrogramFFTSize.rawValue, forKey: "spectrogramFFTSize")
         defaults.set(spectrogramOverlap.rawValue, forKey: "spectrogramOverlap")
         defaults.set(spectrogramFrequencyScale.rawValue, forKey: "spectrogramFrequencyScale")
