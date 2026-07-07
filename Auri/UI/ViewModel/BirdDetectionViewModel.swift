@@ -166,6 +166,7 @@ final class BirdDetectionViewModel: ObservableObject {
             while !Task.isCancelled {
                 await refreshRuntime()
                 await refreshRegionalDataIfNeeded()
+                await checkDailyDigest()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
@@ -871,5 +872,105 @@ final class BirdDetectionViewModel: ObservableObject {
         } catch {
             // Authorization can succeed while delivery still fails for agent apps.
         }
+    }
+
+    /// Fixed formatter for digest day keys: POSIX locale + explicit format so the
+    /// "yyyy-MM-dd" key is stable across user locales.
+    private static let digestDayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    /// Once-daily "yesterday in your yard" summary, evaluated from the runtime
+    /// tick rather than a scheduled trigger: a Mac asleep at digest time catches
+    /// up on wake and a relaunch catches up on the next tick. Sends at most one
+    /// digest per calendar day — `lastDigestDayKey` records the SUMMARIZED day so
+    /// even a quiet day (nil summary) marks itself done and never retries or nags.
+    private func checkDailyDigest() async {
+        guard settings.digestEnabled, settings.notificationsEnabled else { return }
+
+        let calendar = Calendar.current
+        let now = Date()
+        guard calendar.component(.hour, from: now) >= settings.digestHour else { return }
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else { return }
+
+        let yesterdayKey = Self.digestDayKeyFormatter.string(from: calendar.startOfDay(for: yesterday))
+        guard yesterdayKey != settings.lastDigestDayKey else { return }
+
+        // Record the day as handled before composing anything so a quiet day is
+        // not re-evaluated on every subsequent tick.
+        settings.lastDigestDayKey = yesterdayKey
+
+        guard let summary = DailyDigestBuilder.summarize(
+            entries: historyStore.entries,
+            day: yesterday,
+            calendar: calendar
+        ) else {
+            return
+        }
+
+        await sendDigestNotification(for: summary)
+    }
+
+    /// Delivers the daily digest, mirroring `sendNotification(for:)`'s
+    /// authorization handling. Deliberately bypasses the rate limiter and
+    /// per-species cooldowns — it is one notification per day by construction.
+    private func sendDigestNotification(for summary: DigestSummary) async {
+        let center = UNUserNotificationCenter.current()
+        let systemSettings = await center.notificationSettings()
+        var granted = systemSettings.authorizationStatus == .authorized || systemSettings.authorizationStatus == .provisional
+        if !granted && systemSettings.authorizationStatus == .notDetermined {
+            granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        }
+        guard granted else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Yesterday in your yard"
+        content.body = Self.digestBody(for: summary)
+        if settings.notificationSoundEnabled {
+            content.sound = .default
+        }
+
+        let request = UNNotificationRequest(
+            identifier: "daily-digest-\(summary.day.timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        do {
+            try await center.add(request)
+        } catch {
+            // Authorization can succeed while delivery still fails for agent apps.
+        }
+    }
+
+    /// Composes the digest body, e.g. "9 species · 42 detections · busiest 6–8 AM.
+    /// New: Brown Creeper". Clauses that don't apply (no busiest window, no new
+    /// species) are omitted; the New list is capped at three names then "+N more".
+    static func digestBody(for summary: DigestSummary) -> String {
+        var clauses = [
+            pluralized(summary.speciesCount, "species", "species"),
+            pluralized(summary.detectionCount, "detection", "detections")
+        ]
+        if let busiest = summary.busiestHourLabel {
+            clauses.append("busiest \(busiest)")
+        }
+        var body = clauses.joined(separator: " · ")
+
+        if !summary.newSpeciesNames.isEmpty {
+            let capped = summary.newSpeciesNames.prefix(3)
+            var newText = capped.joined(separator: ", ")
+            let remainder = summary.newSpeciesNames.count - capped.count
+            if remainder > 0 {
+                newText += " +\(remainder) more"
+            }
+            body += ". New: \(newText)"
+        }
+        return body
+    }
+
+    private static func pluralized(_ count: Int, _ singular: String, _ plural: String) -> String {
+        "\(count) \(count == 1 ? singular : plural)"
     }
 }
