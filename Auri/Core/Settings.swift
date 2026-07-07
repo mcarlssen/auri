@@ -280,6 +280,13 @@ final class AppSettings: ObservableObject {
         didSet { save() }
     }
 
+    /// Persist the highest-confidence clip per species to disk so it can be
+    /// replayed and exported from the Heard tab. Turning this off stops new
+    /// captures; it does not delete clips already saved.
+    @Published var bestRecordingsEnabled: Bool {
+        didSet { save() }
+    }
+
     /// Software gain applied before BirdNET and spectrogram processing.
     @Published var inputGainDB: Double {
         didSet { save() }
@@ -376,6 +383,7 @@ final class AppSettings: ObservableObject {
             ?? (defaults.object(forKey: "recordingEnabled") as? Bool ?? true)
         launchAtLogin = defaults.object(forKey: "launchAtLogin") as? Bool ?? false
         debugLogging = defaults.object(forKey: "debugLogging") as? Bool ?? false
+        bestRecordingsEnabled = defaults.object(forKey: "bestRecordingsEnabled") as? Bool ?? true
         inputGainDB = defaults.object(forKey: "inputGainDB") as? Double ?? 12
         let fftRaw = defaults.object(forKey: "spectrogramFFTSize") as? Int ?? SpectrogramFFTSize.size2048.rawValue
         spectrogramFFTSize = SpectrogramFFTSize(rawValue: fftRaw) ?? .size2048
@@ -457,6 +465,7 @@ final class AppSettings: ObservableObject {
         defaults.set(startListeningAtLogin, forKey: "startListeningAtLogin")
         defaults.set(launchAtLogin, forKey: "launchAtLogin")
         defaults.set(debugLogging, forKey: "debugLogging")
+        defaults.set(bestRecordingsEnabled, forKey: "bestRecordingsEnabled")
         defaults.set(inputGainDB, forKey: "inputGainDB")
         defaults.set(spectrogramFFTSize.rawValue, forKey: "spectrogramFFTSize")
         defaults.set(spectrogramOverlap.rawValue, forKey: "spectrogramOverlap")

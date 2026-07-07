@@ -29,6 +29,7 @@ let package = Package(
                 "Audio/SpectrogramEngine.swift",
                 "Audio/AudioFileLoader.swift",
                 "Audio/WindowAccumulator.swift",
+                "Audio/BestRecordingsStore.swift",
                 "Server/BirdNetCoreMLRecognizer.swift",
                 "UI/DetectionCardView.swift",
                 "UI/SpectrogramView.swift"

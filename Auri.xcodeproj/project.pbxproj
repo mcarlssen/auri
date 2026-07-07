@@ -49,6 +49,7 @@
 		A10000000000000000000042 /* OfflineAnalysisTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000044 /* OfflineAnalysisTabView.swift */; };
 		A10000000000000000000043 /* AudioWindowNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000045 /* AudioWindowNormalizer.swift */; };
 		A10000000000000000000101 /* DetectionAudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000101 /* DetectionAudioStore.swift */; };
+		3BE36F1E011855FCCD72E2FF /* BestRecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE90EB698145219C49B181EE /* BestRecordingsStore.swift */; };
 		A10000000000000000000044 /* ConfidenceRollingEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000046 /* ConfidenceRollingEstimator.swift */; };
 		A10000000000000000000045 /* ConfidenceThresholdControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000047 /* ConfidenceThresholdControls.swift */; };
 /* End PBXBuildFile section */
@@ -98,6 +99,7 @@
 		A20000000000000000000044 /* OfflineAnalysisTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAnalysisTabView.swift; sourceTree = "<group>"; };
 		A20000000000000000000045 /* AudioWindowNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWindowNormalizer.swift; sourceTree = "<group>"; };
 		A20000000000000000000101 /* DetectionAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionAudioStore.swift; sourceTree = "<group>"; };
+		CE90EB698145219C49B181EE /* BestRecordingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BestRecordingsStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000046 /* ConfidenceRollingEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfidenceRollingEstimator.swift; sourceTree = "<group>"; };
 		A20000000000000000000047 /* ConfidenceThresholdControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfidenceThresholdControls.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* Auri.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Auri.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -160,6 +162,7 @@
 				A20000000000000000000034 /* AudioFileLoader.swift */,
 				A20000000000000000000045 /* AudioWindowNormalizer.swift */,
 				A20000000000000000000101 /* DetectionAudioStore.swift */,
+				CE90EB698145219C49B181EE /* BestRecordingsStore.swift */,
 				A20000000000000000000027 /* AudioMeterStats.swift */,
 				A20000000000000000000099 /* WindowAccumulator.swift */,
 				A20000000000000000000029 /* SpectrogramEngine.swift */,
@@ -373,6 +376,7 @@
 				A10000000000000000000042 /* OfflineAnalysisTabView.swift in Sources */,
 				A10000000000000000000043 /* AudioWindowNormalizer.swift in Sources */,
 				A10000000000000000000101 /* DetectionAudioStore.swift in Sources */,
+				3BE36F1E011855FCCD72E2FF /* BestRecordingsStore.swift in Sources */,
 				A10000000000000000000044 /* ConfidenceRollingEstimator.swift in Sources */,
 				A10000000000000000000045 /* ConfidenceThresholdControls.swift in Sources */,
 			);

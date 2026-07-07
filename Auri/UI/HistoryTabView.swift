@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Time window for the Heard list: the current session, today, or all-time.
 enum HeardScope: String, CaseIterable, Identifiable {
@@ -113,6 +114,10 @@ struct HistoryTabView: View {
                 if scope == .lifetime {
                     Button("Clear history", role: .destructive) {
                         historyStore.clear()
+                        // "Clear my data" means all of it, including the saved
+                        // best-recording clips (an archive, but still the user's
+                        // data), so wipe the library alongside history.
+                        viewModel.bestRecordings.removeAll()
                     }
                     .disabled(historyStore.entries.isEmpty)
                 }
@@ -263,6 +268,11 @@ struct SpeciesHistoryCard: View {
 
     var body: some View {
         DisclosureGroup {
+            BestRecordingRow(
+                store: viewModel.bestRecordings,
+                birdId: summary.birdId,
+                commonName: summary.birdName
+            )
             SpeciesInfoView(scientificName: summary.scientificName)
                 .padding(.bottom, 4)
             ForEach(entries) { detection in
@@ -353,6 +363,74 @@ struct SpeciesHistoryCard: View {
         case .unusual: return .orange.opacity(0.25)
         case .expected: return .green.opacity(0.2)
         case .unknown: return .secondary.opacity(0.15)
+        }
+    }
+}
+
+/// The saved best clip for a species in the Heard tab: play/stop, a caption, and
+/// WAV export. Observes the store so the row appears and updates the instant a
+/// clip is captured or replaced. Renders nothing when the species has no clip.
+struct BestRecordingRow: View {
+    @ObservedObject var store: BestRecordingsStore
+    let birdId: Int
+    let commonName: String
+
+    var body: some View {
+        if let recording = store.recording(forBirdId: birdId) {
+            let isPlaying = store.playingBirdId == birdId
+            HStack(spacing: 8) {
+                Button(action: { store.togglePlayback(birdId: birdId) }) {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 10))
+                        .frame(width: 20, height: 18)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help(isPlaying ? "Stop" : "Play the best recording")
+                .accessibilityLabel(isPlaying ? "Stop best recording" : "Play best recording")
+
+                Text(caption(for: recording))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button(action: { export(recording) }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 11))
+                        .frame(width: 24, height: 20)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Export the best recording as a WAV file")
+                .accessibilityLabel("Export best recording")
+            }
+            .padding(.bottom, 6)
+        }
+    }
+
+    private func caption(for recording: BestRecording) -> String {
+        let percent = Int((recording.confidence * 100).rounded())
+        let date = recording.recordedAt.formatted(.dateTime.month(.abbreviated).day())
+        return "Best recording · \(percent)% · \(date)"
+    }
+
+    /// Copy the stored WAV to a user-chosen location via a save panel.
+    private func export(_ recording: BestRecording) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(commonName) — Auri.wav"
+        panel.allowedContentTypes = [.wav]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let source = store.fileURL(for: recording)
+        do {
+            // The panel already confirmed any overwrite, so replace the target.
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            // Export is best-effort; the row stays put so the user can retry.
         }
     }
 }

@@ -91,6 +91,9 @@ final class BirdDetectionViewModel: ObservableObject {
     let locationProvider = LocationProvider()
     /// Retains and plays the short audio window behind each live detection.
     let audioClips = DetectionAudioStore()
+    /// Persists the single highest-confidence clip per species so the user can
+    /// replay and export "the sound of my yard" from the Heard tab.
+    let bestRecordings = BestRecordingsStore()
 
     private let recognizer = BirdNetCoreMLRecognizer()
     private var speciesCooldown = SpeciesCooldown()
@@ -440,6 +443,9 @@ final class BirdDetectionViewModel: ObservableObject {
         detections.removeAll { $0.id == detection.id }
         historyStore.remove(id: detection.id)
         audioClips.remove([detection.id])
+        // The best-recordings library is a curated archive, not a view of
+        // history, so deleting a detection never removes a species' saved clip;
+        // only "Clear history" (all-time scope) wipes the library.
         if selectedDetection?.id == detection.id {
             selectedDetection = nil
         }
@@ -469,6 +475,7 @@ final class BirdDetectionViewModel: ObservableObject {
             historyStore.remove(id: id)
         }
         audioClips.remove(ids)
+        // As in deleteDetection: the best-recordings archive is left intact.
         if let selected = selectedDetection?.id, ids.contains(selected) {
             selectedDetection = nil
         }
@@ -790,6 +797,16 @@ final class BirdDetectionViewModel: ObservableObject {
             sessionSpeciesIDs.insert(response.id)
             if let windowData {
                 audioClips.store(id: detection.id, data: windowData, sampleRate: windowSampleRate)
+                // detection.confidence here is the effective (possibly
+                // corroborated) confidence — the value shown on the card, and
+                // the right basis for picking a species' best clip.
+                if settings.bestRecordingsEnabled {
+                    bestRecordings.consider(
+                        detection: detection,
+                        windowData: windowData,
+                        sampleRate: windowSampleRate
+                    )
+                }
             }
         }
 
