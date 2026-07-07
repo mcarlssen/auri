@@ -16,6 +16,7 @@
 		A10000000000000000000007 /* Cooldown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* Cooldown.swift */; };
 		A10000000000000000000008 /* IgnoreList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* IgnoreList.swift */; };
 		A10000000000000000000100 /* DetectionCorroborator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000100 /* DetectionCorroborator.swift */; };
+		898715EE573CE9C25B62F367 /* ExpectedNearbyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84175DF194BE66A4DECE94A5 /* ExpectedNearbyBuilder.swift */; };
 		22C8AEB80EB0C5777483831F /* DailyDigestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB0D65BFD5D3E491394AA8C /* DailyDigestBuilder.swift */; };
 		A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* BirdDetectionViewModel.swift */; };
 		A10000000000000000000012 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* MenuBarView.swift */; };
@@ -62,6 +63,7 @@
 		A20000000000000000000007 /* Cooldown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cooldown.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* IgnoreList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoreList.swift; sourceTree = "<group>"; };
 		A20000000000000000000100 /* DetectionCorroborator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionCorroborator.swift; sourceTree = "<group>"; };
+		84175DF194BE66A4DECE94A5 /* ExpectedNearbyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpectedNearbyBuilder.swift; sourceTree = "<group>"; };
 		CBB0D65BFD5D3E491394AA8C /* DailyDigestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyDigestBuilder.swift; sourceTree = "<group>"; };
 		A20000000000000000000031 /* BirdNetCoreMLRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirdNetCoreMLRecognizer.swift; sourceTree = "<group>"; };
 		A20000000000000000000032 /* audio-model-fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "audio-model-fp16.mlpackage"; sourceTree = "<group>"; };
@@ -172,6 +174,7 @@
 				A20000000000000000000007 /* Cooldown.swift */,
 				A20000000000000000000008 /* IgnoreList.swift */,
 				A20000000000000000000100 /* DetectionCorroborator.swift */,
+				84175DF194BE66A4DECE94A5 /* ExpectedNearbyBuilder.swift */,
 				CBB0D65BFD5D3E491394AA8C /* DailyDigestBuilder.swift */,
 				A20000000000000000000019 /* LaunchAtLoginManager.swift */,
 				A20000000000000000000021 /* EBirdSubmission.swift */,
@@ -340,6 +343,7 @@
 				A10000000000000000000007 /* Cooldown.swift in Sources */,
 				A10000000000000000000008 /* IgnoreList.swift in Sources */,
 				A10000000000000000000100 /* DetectionCorroborator.swift in Sources */,
+				898715EE573CE9C25B62F367 /* ExpectedNearbyBuilder.swift in Sources */,
 				22C8AEB80EB0C5777483831F /* DailyDigestBuilder.swift in Sources */,
 				A10000000000000000000029 /* BirdNetCoreMLRecognizer.swift in Sources */,
 				A10000000000000000000011 /* BirdDetectionViewModel.swift in Sources */,

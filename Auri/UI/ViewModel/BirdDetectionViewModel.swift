@@ -64,6 +64,10 @@ final class BirdDetectionViewModel: ObservableObject {
     @Published private(set) var recognitionStats = RecognitionPipelineStats()
     @Published private(set) var fileAnalysisState: FileAnalysisState = .idle
     @Published private(set) var regionalLabel: String?
+    /// Species reported to eBird near the user that they have not recorded
+    /// themselves — the "expected nearby" list. Empty when the feature or
+    /// location filtering is off, or when the region/key/endpoint yields nothing.
+    @Published private(set) var expectedNearby: [NearbyObservation] = []
     /// Raw per-window model output for the Debug accordion. Only populated while
     /// debug capture is enabled (the accordion is open); newest first.
     @Published private(set) var modelOutputLog: [ModelOutputEntry] = []
@@ -123,6 +127,12 @@ final class BirdDetectionViewModel: ObservableObject {
     /// Lowercased scientific names the eBird taxonomy knows about. A name absent
     /// here can't be classified in/out of region, so it is never filtered out.
     private var regionalKnownScientificNames: Set<String> = []
+
+    /// Throttle the expected-nearby recompute: it runs at most every 5 minutes,
+    /// or immediately when the recorded-detection count changes (a newly heard
+    /// species should drop off the list promptly). -1 forces the first compute.
+    private var lastExpectedNearbyComputeAt: Date?
+    private var lastExpectedNearbyEntryCount: Int = -1
 
     private enum RegionStatus {
         case unknown
@@ -334,6 +344,7 @@ final class BirdDetectionViewModel: ObservableObject {
             regionalLabel = nil
             regionalInRegionScientificNames = []
             regionalKnownScientificNames = []
+            expectedNearby = []
             return
         }
 
@@ -396,7 +407,12 @@ final class BirdDetectionViewModel: ObservableObject {
     /// resolve the exact species page (ebird.org/species/CODE); otherwise we
     /// fall back to an eBird search for the species name.
     func openEBirdInfo(for detection: BirdDetection) {
-        let scientificName = detection.scientificName
+        openEBirdInfo(scientificName: detection.scientificName)
+    }
+
+    /// Open the eBird page for a species by scientific name — shared by the
+    /// detection cards and the expected-nearby rows, which have no `BirdDetection`.
+    func openEBirdInfo(scientificName: String) {
         let apiKey = settings.resolvedEBirdApiKey
         Task {
             var url: URL?
@@ -582,6 +598,36 @@ final class BirdDetectionViewModel: ObservableObject {
                 category: "Location"
             )
         }
+        await refreshExpectedNearbyIfNeeded()
+    }
+
+    /// Recompute the "heard nearby, not yet by you" list from the cached eBird
+    /// nearby feed and the user's lifetime history. Called from the regional
+    /// refresh loop (already gated on location filtering being enabled), it clears
+    /// the list when the feature is off and otherwise recomputes at most every
+    /// 5 minutes, or immediately whenever the recorded-detection count changed.
+    private func refreshExpectedNearbyIfNeeded() async {
+        guard settings.expectedNearbyEnabled else {
+            if !expectedNearby.isEmpty { expectedNearby = [] }
+            return
+        }
+
+        let entryCount = historyStore.entries.count
+        let now = Date()
+        let isStale = lastExpectedNearbyComputeAt.map { now.timeIntervalSince($0) > 300 } ?? true
+        guard isStale || entryCount != lastExpectedNearbyEntryCount else { return }
+        lastExpectedNearbyComputeAt = now
+        lastExpectedNearbyEntryCount = entryCount
+
+        // Lifetime, source-agnostic: anything ever recorded counts as "heard".
+        let heardScientificNames = Set(historyStore.entries.map { $0.scientificName.lowercased() })
+        let ignoredSpeciesNames = Set(settings.ignoredSpeciesNames)
+        let nearby = await EBirdRegionalService.shared.nearbySnapshot(apiKey: settings.resolvedEBirdApiKey)
+        expectedNearby = ExpectedNearbyBuilder.expected(
+            nearby: nearby,
+            heardScientificNames: heardScientificNames,
+            ignoredSpeciesNames: ignoredSpeciesNames
+        )
     }
 
     @discardableResult

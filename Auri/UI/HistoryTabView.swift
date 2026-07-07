@@ -26,6 +26,7 @@ struct HistoryTabView: View {
     @State private var searchText = ""
     @State private var sortOption: HistorySortOption = .date
     @AppStorage("heardScope") private var scope: HeardScope = .session
+    @AppStorage("expectedNearbyExpanded") private var expectedNearbyExpanded = false
     @State private var copyFeedback = ""
 
     init(viewModel: BirdDetectionViewModel) {
@@ -74,6 +75,10 @@ struct HistoryTabView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
+            if scope == .lifetime, !viewModel.expectedNearby.isEmpty {
+                expectedNearbySection
+            }
 
             HStack(spacing: 12) {
                 statTile(historyStore.speciesCount(since: nil), "Lifetime species")
@@ -162,6 +167,74 @@ struct HistoryTabView: View {
         copyFeedback = "\(lines.count) species copied to clipboard."
     }
 
+    private var expectedNearbySection: some View {
+        DisclosureGroup(isExpanded: $expectedNearbyExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(viewModel.expectedNearby, id: \.scientificName) { observation in
+                    expectedNearbyRow(observation)
+                }
+                Text(expectedNearbyFooterText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack {
+                Image(systemName: "binoculars")
+                Text("Heard nearby — not yet on your list")
+                Spacer()
+                Text("\(viewModel.expectedNearby.count) species")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func expectedNearbyRow(_ observation: NearbyObservation) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(observation.commonName)
+                    .font(.subheadline)
+                Text(displayScientificName(observation.scientificName))
+                    .font(.caption.italic())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if let observedAt = observation.lastObservedAt {
+                Text("seen nearby \(observedAt.formatted(.relative(presentation: .named)))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                viewModel.openEBirdInfo(scientificName: observation.scientificName)
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11))
+                    .frame(width: 24, height: 20)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("View \(observation.commonName) on eBird")
+            .accessibilityLabel("View \(observation.commonName) on eBird")
+        }
+    }
+
+    private var expectedNearbyFooterText: String {
+        if let region = viewModel.regionalLabel, !region.isEmpty {
+            return "Reported to eBird in region \(region) within the last 14 days."
+        }
+        return "Reported to eBird within the last 14 days."
+    }
+
+    /// eBird nearby names are stored lowercased for matching; show the binomial
+    /// with a capitalized genus so it reads like the app's other species names.
+    private func displayScientificName(_ name: String) -> String {
+        name.prefix(1).uppercased() + name.dropFirst()
+    }
     private func statTile(_ value: Int, _ label: String) -> some View {
         VStack(spacing: 2) {
             Text("\(value)")
